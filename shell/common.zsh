@@ -12,6 +12,7 @@ alias config='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 # Common configs
 source "$SHELL_DIR/common/aliases.zsh"
 source "$SHELL_DIR/common/functions.zsh"
+source "$SHELL_DIR/common/git.zsh"
 source "$SHELL_DIR/common/fzf.zsh"
 
 # Starship prompt
