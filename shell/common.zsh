@@ -2,7 +2,7 @@
 # This file sources common configs, then machine-specific local.zsh if it exists
 
 export PATH="$HOME/.local/bin:$PATH"
-export EDITOR=zed
+export EDITOR="zed --wait"
 
 SHELL_DIR="${0:a:h}"
 
