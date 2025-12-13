@@ -1,6 +1,9 @@
 # Portable shell configuration
 # This file sources common configs, then machine-specific local.zsh if it exists
 
+export PATH="$HOME/.local/bin:$PATH"
+export EDITOR=zed
+
 SHELL_DIR="${0:a:h}"
 
 # Dotfiles management (bare git repo pattern)

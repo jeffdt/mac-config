@@ -1,6 +1,6 @@
 # Mac Config
 
-My dotfiles managed using a bare git repository. This approach allows tracking config files in their natural locations without cluttering the home directory with a full git repo.
+dotfiles managed using a bare git repository. Allows tracking config files in their natural locations without cluttering the home directory with a full git repo.
 
 ## Setup on a New Machine
 
@@ -9,30 +9,24 @@ My dotfiles managed using a bare git repository. This approach allows tracking c
 git clone --bare git@github.com:jeffdt/mac-config.git $HOME/.dotfiles
 ```
 
-### 2. Create the config alias
-Add this to your shell config (temporarily or permanently):
+### 2. Checkout the config files
 ```bash
-alias config='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
-```
-
-### 3. Checkout the config files
-```bash
-config checkout
+/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME checkout
 ```
 
 If you get errors about existing files, back them up or remove them first:
 ```bash
 mkdir -p ~/.config-backup
-config checkout 2>&1 | grep -E "\s+\." | awk {'print $1'} | xargs -I{} mv {} ~/.config-backup/{}
-config checkout
+/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME checkout 2>&1 | grep -E "\s+\." | awk {'print $1'} | xargs -I{} mv {} ~/.config-backup/{}
+/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME checkout
 ```
 
-### 4. Hide untracked files
+### 3. Hide untracked files
 ```bash
-config config --local status.showUntrackedFiles no
+/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME config --local status.showUntrackedFiles no
 ```
 
-### 5. Set up shell config
+### 4. Set up shell config
 Add this line to your `~/.zshrc`:
 ```bash
 source ~/shell/common.zsh
@@ -40,7 +34,7 @@ source ~/shell/common.zsh
 
 Optionally create `~/shell/local.zsh` for machine-specific config (it's auto-sourced if it exists).
 
-### 6. Reload your shell
+### 5. Reload your shell
 ```bash
 source ~/.zshrc
 ```
