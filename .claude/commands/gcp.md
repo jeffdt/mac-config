@@ -36,9 +36,10 @@ If a PR exists, compare the changes just pushed against the current PR descripti
 ## Step 5: Update PR description (if needed)
 
 If the description needs updating:
-1. Draft an updated description that remains accurate
-2. Keep it concise - don't add verbose explanations
-3. Use `gh pr edit <number> --body "..."` to update
-4. Inform the user what was changed and why
+1. Check if a Skill named `formatting-prs` exists and apply its guidance
+2. Draft an updated description that remains accurate
+3. Keep it concise - don't add verbose explanations
+4. Use `gh pr edit <number> --body "..."` to update
+5. Inform the user what was changed and why
 
 If no update is needed, briefly confirm the PR description is still accurate.

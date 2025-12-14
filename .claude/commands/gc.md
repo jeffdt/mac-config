@@ -4,7 +4,11 @@ description: Git commit changes for current feature
 
 Follow these steps to commit changes for the current feature:
 
-## Step 1: Check current branch status
+## Step 1: Check for commit customization skills
+
+Check if a Skill named `formatting-commits` exists. If found, incorporate its guidance into commit message formatting below.
+
+## Step 2: Check current branch status
 
 Run these commands in parallel:
 - `git branch --show-current` to see the current branch
@@ -13,7 +17,7 @@ Run these commands in parallel:
 - `git diff --staged` to see already staged changes
 - `git log -5 --oneline` to understand recent commit style in this repo
 
-## Step 2: Ensure we're on a feature branch
+## Step 3: Ensure we're on a feature branch
 
 **If currently on `main` or `master`:**
 - Do not commit directly to the main branch
@@ -23,14 +27,14 @@ Run these commands in parallel:
 **If already on a feature branch:**
 - Proceed with the commit
 
-## Step 3: Stage changes
+## Step 4: Stage changes
 
 - Based on the changes reviewed, stage relevant files using `git add <files>` or `git add .`
 - **DO NOT stage files that likely contain secrets**: .env, credentials.json, .pem, id_rsa, .key, config files with passwords, etc.
 - If secret files are present, warn the user and exclude them from staging
 - If there are changes that might not be related to the current feature, use AskUserQuestion to confirm before proceeding
 
-## Step 4: Squash unpushed commits
+## Step 5: Squash unpushed commits
 
 - Check for unpushed commits using `git log @{upstream}..HEAD --oneline` (or against origin/main if no upstream)
 - **If there are unpushed commits**, squash them with the new changes into one commit:
@@ -38,7 +42,7 @@ Run these commands in parallel:
   - Stage all changes with `git add .`
 - This keeps history clean with one commit per logical change
 
-## Step 5: Craft and commit
+## Step 6: Craft and commit
 
 Create a clear, concise commit message:
 - Single line, ~50 characters (soft limit)
