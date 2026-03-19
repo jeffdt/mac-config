@@ -1,8 +1,12 @@
 ---
 description: Copy relevant command or text from recent output to clipboard
+argument-hint: [hint]
+allowed-tools: Bash(echo:*), Bash(afplay:*), Bash(osascript:*), AskUserQuestion
 ---
 
 Analyze the recent conversation output and identify the most relevant command(s) or text snippet(s) that the user would likely want to copy to their clipboard.
+
+**Hint**: $ARGUMENTS
 
 ## What to look for
 
@@ -13,6 +17,16 @@ Analyze the recent conversation output and identify the most relevant command(s)
 5. **Error messages** - Key error text that might need to be shared/searched
 
 ## Decision process
+
+**If a hint was provided** (`$ARGUMENTS` is not empty): Use the hint to match against candidates. The hint is a fuzzy keyword — match it against tool names, CLI names, partial command text, or any identifying word in the candidates. For example:
+- `cli` or `klaviyocli` → match a `klaviyocli` command
+- `op` or `1pass` → match an `op` (1Password CLI) command
+- `git` → match a git command
+- `url` → match a URL
+
+If the hint clearly matches one candidate, copy it directly. If it matches multiple or none, fall back to the normal flow below but mention the hint didn't narrow it down.
+
+**If no hint was provided**, use the standard flow:
 
 1. **Single clear candidate**: If there's one obvious command or text to copy (e.g., a command that was just suggested to run), copy it directly using `pbcopy`
 

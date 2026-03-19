@@ -2,7 +2,7 @@
 # This file sources common configs, then machine-specific local.zsh if it exists
 
 export PATH="$HOME/.local/bin:$PATH"
-export EDITOR="zed --wait"
+export EDITOR="subl --wait"
 
 SHELL_DIR="${0:a:h}"
 
@@ -13,6 +13,8 @@ alias config='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 source "$SHELL_DIR/common/utils.zsh"
 source "$SHELL_DIR/common/git.zsh"
 source "$SHELL_DIR/common/fzf.zsh"
+source "$SHELL_DIR/common/aliases.zsh"
+source "$SHELL_DIR/common/functions.zsh"
 
 # Starship prompt
 eval "$(starship init zsh)"

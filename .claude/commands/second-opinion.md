@@ -1,5 +1,6 @@
 ---
 description: Get independent verification of a conclusion from fresh subagent(s). Optional argument for count (e.g., /second-opinion 3)
+allowed-tools: Task, AskUserQuestion, Read, Grep, Glob, WebSearch, WebFetch
 ---
 
 You are about to get a second opinion on a conclusion or suggestion that was just reached. The goal is to mitigate non-determinism by having fresh agent(s) independently arrive at (or challenge) the same conclusion.

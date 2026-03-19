@@ -1,6 +1,14 @@
 ---
 description: Explain recent changes interactively with comprehension checkpoints
+allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git show:*), Read, Grep, Glob, AskUserQuestion
 ---
+
+## Pre-computed Context
+
+- Recent commits: !`git log -10 --oneline`
+- Change summary: !`git diff --stat HEAD~5..HEAD 2>/dev/null || echo "Not enough commits"`
+
+## Instructions
 
 You are about to explain the changes you recently made to this codebase. This is an interactive teaching session with a lead software engineer who needs to deeply understand not just WHAT changed, but WHY and HOW it fits into the larger system.
 
@@ -19,15 +27,25 @@ For each step:
 3. **Highlight key decisions**: Call out any non-obvious choices, tradeoffs, or patterns used
 4. **Show relevant code**: Include brief, focused code snippets when they aid understanding
 
+## Clarification Pause
+
+After explaining each step (or group of 1-2 steps), pause and ask: **"Any questions about what I just covered before we move on to a quick comprehension check?"**
+
+- Wait for the user's response
+- If they have questions, answer them fully before proceeding
+- Only once they confirm understanding (e.g., "nope, good to go", "makes sense", etc.), transition to the comprehension checkpoint below
+
 ## Comprehension Checkpoints
 
-After every 1-2 steps (use judgment based on complexity), pause to quiz the user. These questions should:
+Once the user confirms no clarifying questions, quiz them. These questions should:
 
 - **Test architectural understanding**, not rote recall
 - **Probe the "why"** behind decisions, not just the "what"
 - **Connect concepts** across different parts of the system
 - **Challenge assumptions** about how components interact
 - **Be meaningful and few** - 1-2 thoughtful questions per checkpoint, not a barrage of trivia
+
+**Quiz questions serve two purposes:** They test the user's comprehension, but they also validate the changes themselves. If the user cannot articulate a good reason for a decision, it may be because the decision was wrong — not because they don't understand it. Treat moments where the user struggles to justify a choice as potential signals that the change needs revisiting, not just that the explanation needs improving.
 
 **Question types to favor:**
 - "If we had done X instead, what would break and why?"

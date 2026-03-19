@@ -1,45 +1,16 @@
 ---
 description: Git commit and push changes for current feature
+allowed-tools: SlashCommand:/gc:*, Bash(git push:*), Bash(git diff:*), Bash(git rev-parse:*), Bash(gh pr view:*), Bash(gh pr edit:*)
 ---
 
-First, execute the /gc command to commit changes.
+## Pre-computed Context
 
-After the commit is complete, push to remote:
-- Push with `git push -u origin <branch-name>` (if first push)
-- Or `git push` if branch already tracks remote
+- Existing PR for this branch: !`gh pr view --json number,title,body,state,author 2>&1 || echo "No PR exists"`
 
-## Step 3: Check for existing PR
+## Step 1: Commit changes
 
-After pushing, check if there's an open PR for this branch:
-- Run `gh pr view --json number,title,body,state` to check for an existing PR
-- If no PR exists, we're done
+Use the SlashCommand tool to invoke /gc to commit changes.
 
-## Step 4: Evaluate if PR description needs updating
+## Step 2: Push and manage PR
 
-If a PR exists, compare the changes just pushed against the current PR description:
-
-1. Run `git diff HEAD~1..HEAD` to see what was just committed
-2. Read the current PR description from the previous step
-3. Evaluate whether the PR description is still accurate
-
-**Update the PR description if:**
-- The changes represent a fundamental shift in approach
-- The description references code or decisions that are no longer accurate
-- New significant functionality was added that the description doesn't mention
-
-**Do NOT update for:**
-- Bug fixes or minor corrections
-- Code cleanup or refactoring
-- Adding tests for already-described functionality
-- Small tweaks that don't change the overall narrative
-
-## Step 5: Update PR description (if needed)
-
-If the description needs updating:
-1. Check if a Skill named `formatting-prs` exists and apply its guidance
-2. Draft an updated description that remains accurate
-3. Keep it concise - don't add verbose explanations
-4. Use `gh pr edit <number> --body "..."` to update
-5. Inform the user what was changed and why
-
-If no update is needed, briefly confirm the PR description is still accurate.
+Apply the `git-push` skill using the pre-computed context above.
