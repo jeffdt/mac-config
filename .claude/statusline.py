@@ -79,23 +79,9 @@ if transcript_path and os.path.isfile(transcript_path):
 if len(session_name) > 30:
     session_name = session_name[:27] + '...'
 
-# Calculate current context window usage (accurate percentage)
+# Get context window usage percentage
 ctx = data.get('context_window', {})
-current_usage = ctx.get('current_usage', {})
-context_size = ctx.get('context_window_size', 200000)
-
-# Sum current usage tokens
-in_tok = current_usage.get('input_tokens', 0) or 0
-out_tok = current_usage.get('output_tokens', 0) or 0
-cache_create = current_usage.get('cache_creation_input_tokens', 0) or 0
-cache_read = current_usage.get('cache_read_input_tokens', 0) or 0
-current_tokens = in_tok + out_tok + cache_create + cache_read
-
-# Calculate percentage and determine color
-if context_size > 0:
-    pct = (current_tokens * 100) / context_size
-else:
-    pct = 0
+pct = ctx.get('used_percentage') or 0
 
 # Color: red at 90%+, otherwise cyan
 tok_color = red if pct >= 90 else c
