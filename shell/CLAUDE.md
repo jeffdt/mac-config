@@ -9,26 +9,37 @@ Personal zsh shell configuration using a two-tier architecture:
 - **`common.zsh`** — Entry point. Sources all `common/` modules, initializes starship prompt, then conditionally sources `local.zsh` for machine-specific config. This file and `common/` are portable and tracked in git via a bare repo at `~/.dotfiles/`.
 - **`local.zsh`** — Machine-specific entry point (work laptop). Sources all `local/` modules. **Not tracked in git.**
 
-Dotfiles are managed with the bare git repo pattern: `config` is aliased to `git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME`. Use `config` instead of `git` for dotfile operations.
+**IMPORTANT: This is NOT a normal git repo.** Dotfiles are managed with a bare repo at `~/.dotfiles/`. The `config` alias replaces `git` for all operations:
+
+```
+config status          # not: git status
+config add <file>      # not: git add <file>
+config commit -m "..." # not: git commit -m "..."
+config push            # not: git push
+```
+
+Running bare `git` commands in this directory will fail with "not a git repository". Always use `config`. The work tree root is `$HOME`, so file paths in `config add` are relative to `~` (run `config add` from `~`, or use paths like `shell/common/functions.zsh`).
 
 ## Architecture
 
 ```
-common.zsh          ← entry point, sourced by ~/.zshrc
+common.zsh            ← entry point, sourced by ~/.zshrc
 ├── common/
-│   ├── utils.zsh   ← general aliases (act, la, src, brewup), b64, kdo
-│   ├── git.zsh     ← git aliases (ga, gs, gd, gp, gm, etc.) and functions (gcp, gpa, gpr, gpx)
-│   ├── fzf.zsh     ← fzf initialization
-│   ├── aliases.zsh ← Claude Code quick-question aliases (claude1/2/3), cd shortcuts
-│   └── functions.zsh ← b64 helper, pbcopy wrapper with sound
-local.zsh           ← machine-specific, NOT in git
+│   ├── aliases.zsh   ← Claude Code quick-question aliases (claude1/2/3), cd shortcuts
+│   ├── functions.zsh ← wtc (worktree create shortcut), b64 helper, pbcopy wrapper with sound
+│   ├── fzf.zsh      ← fzf initialization
+│   ├── git.zsh      ← git aliases (ga, gs, gd, gp, gm, etc.) and functions (gcp, gpa, gpr, gpx)
+│   ├── tp.zsh       ← tp (custom portal/teleport app using warp-core): frecency-ranked directory jumping, zsh completion
+│   └── utils.zsh    ← general aliases (act, la, src, brewup), b64, kdo
+local.zsh             ← machine-specific, NOT in git
 ├── local/
-│   ├── envvars.zsh ← tokens and credentials (NEVER commit)
-│   ├── klaviyo.zsh ← work aliases (cda, cdf, etc.), AWS/S2A auth, branch helper
-│   ├── app.zsh     ← on-demand server management (od:request, od:list, od:release, od:connect)
-│   ├── fender.zsh  ← fender dev alias
-│   ├── jarvis.zsh  ← k8s pod access, 1Password secret retrieval
-│   └── fnm.zsh     ← Node version manager setup
+│   ├── envvars.zsh   ← tokens and credentials (NEVER commit)
+│   ├── klaviyo.zsh   ← work aliases (cda, cdf, etc.), AWS/S2A auth, branch helper
+│   ├── fender.zsh    ← ~/r/fender: fender dev alias
+│   ├── fnm.zsh      ← Node version manager setup
+│   ├── jarvis.zsh   ← ~/r/k-ops-jarvis: k8s pod access, 1Password secret retrieval
+│   ├── krepo.zsh    ← ~/r/k-repo: dev helpers, krepo:kill-servers (ports 8091-8100)
+│   └── prod.zsh     ← prod/infra access: od:* (on-demand servers), kdp:* (KDP pod connect + debug)
 ```
 
 ## Key Conventions
