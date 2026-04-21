@@ -110,12 +110,13 @@ EOF
     expected_branch="$(gh pr view "$number" --json headRefName -q .headRefName --repo "$org/$repo" 2>/dev/null)"
 
     if [[ -n "$current_branch" && "$current_branch" == "$expected_branch" ]]; then
-        cd "$slot_path" && exec claude "/pr:review"
+        cd "$slot_path" || { echo "prr: could not cd into $slot_path" >&2; return 1; }
+        exec claude "/pr:review"
     fi
 
     cd "$slot_path" || return 1
-    git reset --hard >/dev/null
-    git clean -fd >/dev/null
+    git reset --hard >/dev/null || return 1
+    git clean -fd >/dev/null || return 1
     git fetch origin || return 1
     gh pr checkout "$number" || return 1
 
