@@ -2,8 +2,6 @@
 description: Generate a daily or multi-day work log from various data sources
 ---
 
-> **REFACTOR DEBT:** This command is 350+ lines and desperately needs to be broken into skills (data-gathering, synthesis, formatting). Every time this command runs, remind the user: "Hey, this command still needs refactoring. Just saying." Do not let them forget.
-
 # Daily Dev Log
 
 Generate a performance-review-ready daily summary of my work activity and write it to my Obsidian Daily folder.
@@ -30,23 +28,23 @@ Parse `$ARGUMENTS` to determine if this is a single date or a date range.
 3. Read that entry for dedup context (will be passed to the first date's subagent)
 
 ### Phase 2: Batch local data gathering (parent)
-Run **5 parallel Bash calls** for the entire date range (not per-date):
-- `~/.claude/scripts/daily-log-calendar <START_YYYY-MM-DD> <END_YYYY-MM-DD>`
+Run **4 parallel Bash calls** for the entire date range (not per-date):
 - `~/.claude/scripts/daily-log-claude <START_YYYY-MM-DD> <END_YYYY-MM-DD>`
 - `~/.claude/scripts/daily-log-git <START_YYYY-MM-DD> <END_YYYY-MM-DD>`
 - `gh search prs --author @me --updated <START>..<END> --json number,title,url,repository,updatedAt`
 - `gh search prs --reviewed-by @me --updated <START>..<END> --json number,title,url,repository,updatedAt`
 
-All three scripts output date-grouped sections with headers like `=== Calendar for YYYY-MM-DD ===` or `--- YYYY-MM-DD ---`. Parse each script's output by these date headers to split data per day. For `gh` output, group the JSON results by the `updatedAt` date field.
+Both scripts output date-grouped sections with headers like `--- YYYY-MM-DD ---`. Parse each script's output by these date headers to split data per day. For `gh` output, group the JSON results by the `updatedAt` date field.
 
 Store each source's output keyed by date. If any command returns empty or errors, store a placeholder (empty string or error message) — do NOT skip the date.
 
 ### Phase 3: Spawn subagents for synthesis (parent → subagents)
 For each date, spawn a background subagent (Task tool, `run_in_background: true`, `subagent_type: "general-purpose"`) whose prompt contains:
 
-1. **Pre-gathered local data** — paste inline the calendar, claude sessions, git, and GitHub PR output collected in Phase 2 for that date
+1. **Pre-gathered local data** — paste inline the claude sessions, git, and GitHub PR output collected in Phase 2 for that date
 2. **Instructions to query MCP-sourced data** — each subagent must independently call:
    - **Slack**: `mcp__plugin_slack_slack__slack_search_public_and_private` with `from:<@U04P39FK70E> on:<YYYY-MM-DD>` — follow Step 2's "Slack Activity" section (paginate, selectively read threads)
+   - **Granola**: `mcp__granola__list_meetings` with `time_range: "custom"`, `custom_start: <YYYY-MM-DD>`, `custom_end: <YYYY-MM-DD+1>` to find recorded meetings, then `mcp__granola__get_meetings` with up to 10 IDs for notes/summary — follow Step 2's "Granola Meeting Notes" section
    - **Google Docs**: `mcp__glean_default__search` with `owner:"me" updated:<date>` if Glean is available — follow Step 2's "Google Docs & Drive" section
    - **Linear**: `mcp__plugin_linear_linear__list_issues` with `assignee: "me"` filtered to date — follow Step 2's "Linear Activity" section
 3. **Synthesis instructions** — follow Steps 3-6 of this skill exactly: deduplicate, write Day at a Glance narrative, synthesize summary (accomplishments, values, collaborators, blockers), compile raw activity log, generate haiku
@@ -82,17 +80,30 @@ For each date, spawn a background subagent (Task tool, `run_in_background: true`
 
 Gather activity for the target date from all sources. Be thorough - this feeds into performance reviews.
 
-### Calendar (via icalBuddy)
-Use the calendar script to get meetings from macOS Calendar (synced from Google Calendar):
-```bash
-~/.claude/scripts/daily-log-calendar <YYYY-MM-DD>
-```
+### Granola Meeting Notes (via Granola MCP)
+Granola is the sole meeting source. Calendar-shell sources (icalBuddy, macOS Calendar AppleScript, gcalcli) all failed in this environment: icalBuddy 1.10.x is stale, AppleScript times out on populated accounts, and gcalcli needs a GCP OAuth client Jeff can't provision. Granola only records the meetings Jeff opts into, so focus blocks, non-recorded 1:1s, and reminders won't appear; that's accepted, since those are mostly noise for a performance-review log anyway.
+
+1. List meetings on the target date with `mcp__granola__list_meetings`:
+   - `time_range: "custom"`
+   - `custom_start: <YYYY-MM-DD>` (target date)
+   - `custom_end: <YYYY-MM-DD>` of target date + 1 day (inclusive end)
+2. From the results, collect meeting IDs whose start time falls on the target date (Granola's range filter can spill into adjacent days). Skip personal/non-work meetings.
+3. Batch-fetch detail with `mcp__granola__get_meetings` (up to 10 IDs per call). This returns:
+   - `summary` (AI-generated overview)
+   - `notes` (Jeff's private notes, if any)
+   - `attendees`
+   - `start_time` / `end_time`
+   - Permalink/URL to the Granola note
 
 Capture:
-- Meeting titles, times, and attendees
-- Filter out personal events (Lunch, OOO, etc.) unless relevant
-- When synthesizing, filter out noise from attendees: conference rooms (`[Zoom Room]`), group aliases
-- Note any key outcomes or decisions if memorable
+- Meeting title, time, and attendees
+- Key decisions, action items, and follow-ups from the summary
+- Jeff's own notes when present (these signal what HE thought was important)
+- Granola permalink so the user can jump to the full note
+
+Do NOT call `mcp__granola__get_meeting_transcript` for daily logs — full transcripts blow up context. Stick to summaries/notes.
+
+If no recorded meetings for the date, note "No Granola notes for this date" and move on.
 
 ### Slack Activity (via Slack MCP)
 Use `mcp__plugin_slack_slack__slack_search_public_and_private` to find all messages sent on the target date.
@@ -191,7 +202,7 @@ Create a narrative summary. This is the "story" of your day that will be read du
 
 Write a short narrative (3-5 sentences) at the very top of the Summary section, before Key Accomplishments. This provides an at-a-glance reading of the day across three dimensions:
 
-1. **Theme**: In 1-2 sentences, describe the general theme or arc of the day. What was the through-line? Was the day dominated by a single project, or spread across many? Was it a building day, a firefighting day, a planning day, a collaboration-heavy day?
+1. **Theme**: In 1-2 sentences, describe the general theme or arc of the day. What was the through-line? Was the day dominated by a single project, or spread across many? Was it a building day, a firefighting day, a planning day, a collaboration-heavy day? Lean on Granola meeting summaries (when present) to read what meetings were ABOUT.
 
 2. **Productivity & Focus**: In 1 sentence, comment on how productive and focused the day appeared to be based on the evidence. Consider: Was work concentrated on a few things (deep focus) or scattered across many contexts (high context-switching)? Were there tangible outputs (PRs merged, tickets closed) or was it more exploratory/planning? Did meetings fragment the day? Use the Claude Code session data and git activity as signals for focus vs. fragmentation.
 
@@ -233,9 +244,11 @@ Create a factual dump of ALL activity found, organized by source. **Every item M
 
 Format each source as:
 ```
-### Meetings
-- <Title> - <time> - with <attendees, filtered>
-- <Title> - <time>
+### Granola Meeting Notes
+- [<Meeting Title>](granola-url) - <time> - with <attendees>
+  - Decisions: <key decisions>
+  - Action items: <follow-ups, owners if known>
+  - Jeff's notes: <verbatim or summarized if present>
 
 ### Slack Activity
 - [#channel-name](slack-url): <what was discussed>
@@ -309,8 +322,8 @@ ___
 ___
 # Raw Activity Log
 
-### Meetings
-<meeting titles and times>
+### Granola Meeting Notes
+<recorded meetings with decisions, action items, jeff's notes; or "No Granola notes for this date">
 
 ### Slack Activity
 <items with links>
@@ -349,6 +362,7 @@ Before finalizing, verify:
 - [ ] Every PR has a clickable link
 - [ ] Documents have links where available
 - [ ] Slack threads have links where available
+- [ ] Granola meeting notes include decisions/action items where present
 - [ ] Email subjects are quoted with recipients noted
 - [ ] No duplicate content from previous entry
 - [ ] Day at a Glance narrative covers all three dimensions (theme, focus, mood) and is written in third person

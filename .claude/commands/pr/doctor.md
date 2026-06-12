@@ -1,6 +1,6 @@
 ---
 description: Diagnose and fix CI build/test failures on the current PR
-allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git branch:*), Bash(git add:*), Bash(git commit:*), Bash(git checkout:*), Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh api:*), Bash(gh repo view:*), Bash(docker info:*), Bash(open -a Docker), Read, Grep, Glob, mcp__buildkite__*, AskUserQuestion, Task
+allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git branch:*), Bash(git add:*), Bash(git commit:*), Bash(git checkout:*), Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh repo view:*), Bash(docker info:*), Bash(open -a Docker), Read, Grep, Glob, mcp__buildkite__*, mcp__plugin_github_github__pull_request_read, AskUserQuestion, Task
 ---
 
 ## Pre-computed Context
@@ -37,7 +37,7 @@ If Buildkite MCP tools return organization access errors, stop and tell the user
 
 Parse the GitHub checks output to find failed Buildkite builds. Extract the build URL and slug from the check details.
 
-If the checks output doesn't include enough detail (e.g., missing build URLs), use `gh api repos/{owner}/{repo}/commits/{sha}/check-runs` to get check run details with URLs. Extract the owner and repo by running `gh repo view --json owner,name`.
+If the checks output doesn't include enough detail (e.g., missing build URLs), use `mcp__plugin_github_github__pull_request_read` with `method: "get_check_runs"` and the PR number from Step 1 to get check run details. Derive `owner` and `repo` from `gh repo view --json owner,name`.
 
 ### Step 5: Fetch & Analyze Failures
 

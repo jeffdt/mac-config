@@ -1,7 +1,7 @@
 ---
 name: git-push
 version: 1.0.0
-description: This skill should be used when a slash command needs to push code to remote, or when autonomously deciding to "push changes", "push to remote", "push code", or "update the remote branch". Provides standardized push workflow including remote tracking, existing PR detection, and intelligent PR description updates.
+description: This skill should be used when a slash command needs to push code to remote, or when autonomously deciding to "push changes", "push to remote", "push code", or "update the remote branch". It must also be loaded before running any `git push` command as part of a larger workflow, including after committing, preparing to create a PR, or finishing up branch work. Even when pushing feels like a quick step between commit and PR creation, this skill defines commit squashing, remote tracking, and PR description update rules that must be followed.
 ---
 
 # Git Push Workflow
@@ -80,10 +80,9 @@ If an update is warranted, first check PR ownership:
 
 When proceeding with the update:
 1. Check if a Skill named `formatting-prs` exists and apply its guidance
-2. Draft an updated description that remains accurate
-3. Keep it concise - avoid verbose explanations
-4. Use `gh pr edit <number> --body "..."` to update
-5. Inform the user what was changed and why
+2. Draft an updated description — a short paragraph (2-4 sentences) explaining **why** the change exists and any non-obvious decisions. Do not include file lists, change statistics, test counts, or bullet-point inventories of what changed.
+3. Use `gh pr edit <number> --body "..."` to update
+4. Inform the user what was changed and why
 
 If no update is needed, briefly confirm the PR description is still accurate.
 

@@ -29,13 +29,47 @@ For each item identified, extract:
 
 ## Step 2: Draft Tickets
 
-Read the `creating-tickets` skill and follow its standards. For each captured item, draft:
+Read the `creating-tickets` skill and follow its standards. **The reader is a teammate opening the ticket cold months from now, not someone who sat in your session** — drop session-internal details (orchestration step IDs, "temper cycle", "item S5", bot names as actors, the discovery journey). Prefer short prose plus a tight AC list over a Goal / Scope / Non-goals template; see the skill's Bad → Good example.
+
+For each captured item, draft:
 
 1. **Title** — concise, PM-readable
-2. **Description** — rationale (if non-obvious) + acceptance criteria + source context line
+2. **Description** — link reference (when there is one) + short prose stating the situation and action + a 2-3 bullet AC. See the skill for the Don't-include list and the Bad → Good example.
 3. **Spec doc decision** — flag whether this item has enough conversational context to warrant a linked spec document. Default to skipping unless there's substantial context (constraints, architectural concerns, open questions, implementation breadcrumbs).
 
-## Step 3: Find Parent Tickets (only if requested)
+## Step 3: Discover Project, Milestone, and Labels
+
+Launch a **single Task subagent** to infer the right project, milestone, and labels for these tickets:
+
+```
+You are identifying the correct Linear project, milestone, and labels for new tickets. Use the mcp__plugin_linear_linear__list_projects, mcp__plugin_linear_linear__list_milestones, and mcp__plugin_linear_linear__list_issues tools.
+
+Team: AMPSS
+
+Drafted tickets:
+<include titles and brief descriptions>
+
+Conversation context clues:
+<include any project/feature/initiative names mentioned in conversation, plus the current git branch name if available>
+
+Instructions:
+1. Call list_projects with team: "AMPSS" to get all projects
+2. Match drafted ticket topics against project names/descriptions. Consider conversation context and branch name as signals.
+3. If a project is confidently matched, call list_milestones filtered to that project to find any active milestone
+4. Call list_issues with project and team filters, limit: 15, to find recent tickets in the matched project. Collect their labels with frequency counts.
+5. Based on ticket complexity, suggest a point estimate (1, 2, 3, 5, 8) for each drafted ticket
+
+Return for each drafted ticket:
+- Suggested project (name + ID), or "unclear" with top 2-3 candidates if ambiguous
+- Suggested milestone (name + ID), or "none" if no active milestone
+- Suggested labels (names) from project peers, with frequency context
+- Suggested estimate (points) with brief rationale
+- Confidence level (high/medium/low) for the project match
+```
+
+If any project match comes back as "unclear", present the candidates to the user via `AskUserQuestion` before proceeding.
+
+## Step 4: Find Parent Tickets (only if requested)
 
 **Skip this step unless** the user explicitly asked to attach to a parent ticket, named a specific parent issue, or the hint/arguments mention a parent. Most tickets are standalone.
 
@@ -59,20 +93,23 @@ Instructions:
 5. If no plausible parents found, say so explicitly
 ```
 
-## Step 4: Confirm with User
+## Step 5: Confirm with User
 
-Present all drafted tickets in a **batch table**:
+Print a **full preview** for each drafted ticket using the YAML + markdown format from the `creating-tickets` skill's "Preview Before Save" section. One block per ticket, in order. The description body must be the exact string that will be sent to `save_issue` — do not abbreviate.
 
-| # | Title | Rationale | AC (count) | Spec Doc? |
-|---|-------|-----------|------------|-----------|
+If a spec doc was flagged for a ticket, follow its preview block with a second block titled `Spec Document` containing the doc title and full markdown content.
 
-If parent discovery was performed in Step 3, add a "Suggested Parent" column and list the candidates below the table.
+If parent discovery was performed in Step 4, include `parent_candidates:` under each ticket's YAML frontmatter listing the candidates (this is informational; the actual parent selection happens below).
 
-Use `AskUserQuestion` to confirm:
+Use `AskUserQuestion` to confirm. Options:
 
-1. **Parent ticket selection** (only if Step 3 was performed) — For each drafted ticket, present parent candidates plus "None / standalone". If all tickets share the same logical parent, allow a single selection for the batch.
+1. **"Create all"** — creates tickets with project, milestone, and labels as shown, **without** estimate
+2. **"Create all with estimates"** — creates tickets with everything including the suggested point estimates
+3. **"Let me tweak first"** — returns to conversation for edits
+4. **"Cancel"**
 
-2. **Approve the batch** — Options: "Create all", "Let me tweak first" (returns to conversation for edits), "Cancel"
+If parent discovery was performed in Step 4:
+- Before the approve question, ask about **parent ticket selection** — present parent candidates plus "None / standalone". If all tickets share the same logical parent, allow a single selection for the batch.
 
 If a parent is selected, launch a **Task subagent** to check sibling labels:
 
@@ -89,39 +126,32 @@ Instructions:
 
 If common labels are found, ask via `AskUserQuestion` whether to apply them.
 
-## Step 5: Create Tickets
+## Step 6: Create Tickets
 
-For each approved ticket, launch a **Task subagent**:
+Call `mcp__plugin_linear_linear__save_issue` **directly in the main conversation** — do not use a Task subagent. The preview block printed in Step 5 sits in scrollback right above the permission prompt and acts as the user's read-friendly view of what's about to be sent.
 
-```
-You are creating a Linear ticket. Use mcp__plugin_linear_linear__save_issue and optionally mcp__plugin_linear_linear__create_document.
+For each approved ticket, in order:
 
-Create this ticket:
-- Title: <title>
-- Team: AMPSS
-- Description (markdown): <description>
-- Priority: 3
-- State: Backlog
-- Parent: <identifier or "none">
-- Labels: <labels or "none">
+1. Call `mcp__plugin_linear_linear__save_issue` with:
+   - `title`, `team: "AMPSS"`, `description` (markdown), `priority: 3`
+   - `state: "Triage"` and `assignee: null` — both required, do not omit or rely on defaults
+   - `parent`, `labels`, `project`, `milestone`, `estimate` per the approved preview (omit fields that are null/none)
 
-<If spec doc flagged>
-After creating the issue, create a linked document:
-- Use mcp__plugin_linear_linear__create_document
-- Title: "Spec: <ticket title>"
-- Content (markdown): <spec doc content>
-- Issue: <the identifier returned from save_issue>
-</If>
+2. If a spec doc was flagged, call `mcp__plugin_linear_linear__create_document` with:
+   - `title: "Spec: <ticket title>"`
+   - `content` (markdown)
+   - `issue: <identifier returned from save_issue>`
 
-Return: the issue identifier (e.g., AMPSS-123), title, URL, and whether a spec doc was created.
-```
+Capture the returned identifier, title, and URL for Step 7.
 
-## Step 6: Report
+## Step 7: Report
 
 For each created ticket, display the identifier as a markdown hyperlink so the user can cmd+click to open it:
-- **[AMPSS-123](https://linear.app/...)**: Title (Backlog, Normal)
+- **[AMPSS-123](https://linear.app/...)**: Title (Ready, Normal)
+  - Project: Project Name / Milestone Name
   - Parent: AMPSS-100 (if applicable)
   - Labels: label1, label2 (if applicable)
+  - Estimate: 3 pts (if included)
   - Spec doc: linked (if created)
 
 If multiple tickets were created, also show the count: "Created 3 tickets."

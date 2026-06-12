@@ -26,6 +26,13 @@ const HARMLESS_BUILTINS = new Set([
   "pushd",
   "popd",
   "printf",
+  "head",
+  "tail",
+  "wc",
+  "sort",
+  "uniq",
+  "tr",
+  "cut",
 ]);
 
 function main() {
@@ -191,6 +198,8 @@ function isHarmlessBuiltin(cmd) {
   const firstWord = cmd.split(/\s+/)[0];
   return HARMLESS_BUILTINS.has(firstWord);
 }
+
+
 
 // --- Settings / pattern loading ---
 

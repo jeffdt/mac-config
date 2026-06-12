@@ -1,7 +1,7 @@
 ---
 name: git-commit
 version: 1.0.0
-description: This skill should be used when a slash command needs to perform a git commit, or when autonomously deciding to "commit changes", "create a commit", "stage and commit", or "make a commit". Provides standardized commit workflow including branch safety, staging, and message formatting.
+description: This skill should be used when a slash command needs to perform a git commit, or when autonomously deciding to "commit changes", "create a commit", "stage and commit", "make a commit", or "save my work". It must also be loaded before running any `git commit` command as part of a larger workflow, including completing implementation, executing plan steps, wrapping up tasks, or any multi-step operation that ends with a commit. Even when committing feels like a minor step in a bigger flow, this skill defines branch safety, staging, and message formatting rules that must be followed.
 ---
 
 # Git Commit Workflow
@@ -30,7 +30,7 @@ git log -5 --oneline
 
 ## Step 1: Check for Customization
 
-Check if a Skill named `formatting-commits` exists. If found, incorporate its guidance into commit message formatting in Step 5.
+Check if a Skill named `formatting-commits` exists. If found, incorporate its guidance into commit message formatting in Step 4.
 
 ## Step 2: Verify Feature Branch
 
@@ -73,31 +73,7 @@ If secret files appear in the status, warn the user and exclude them from stagin
 **Unrelated changes:**
 If changes appear unrelated to the current feature based on file paths or content, use AskUserQuestion to confirm before staging.
 
-## Step 4: Check CODEOWNERS Coverage
-
-Skip this step if no CODEOWNERS file exists in the repository.
-
-**Locate CODEOWNERS:** Check `.github/CODEOWNERS`.
-
-**Identify new files:** From the staged changes, identify files that are **newly added** (shown as `new file` in `git diff --staged --name-status` or untracked in `git status`). Modified or deleted files do not need this check.
-
-**Check coverage:** For each new file, determine whether its path matches an existing pattern in CODEOWNERS. Common pattern formats:
-- `*` — global fallback (covers everything)
-- `/path/to/dir/` — directory match
-- `*.extension` — file type match
-- `/path/to/specific-file` — exact match
-
-If a global `*` pattern exists and covers the team appropriately, new files are likely covered — confirm and move on.
-
-**If uncovered files exist:**
-- Show the user which new files lack CODEOWNERS coverage
-- Present the suggestion using `AskUserQuestion` with options:
-  - "`@klaviyo/amplify-cs`" (default) — add entry with this team
-  - "Different team" — let the user specify the correct owner
-  - "Skip" — do not update CODEOWNERS for this commit
-- If updating, stage the CODEOWNERS change alongside the other files
-
-## Step 5: Craft Commit Message
+## Step 4: Craft Commit Message
 
 Create a clear, concise message following these conventions:
 
@@ -120,7 +96,7 @@ Create a clear, concise message following these conventions:
 - `Updated stuff.` (past tense, vague, period)
 - `WIP` (not descriptive)
 
-## Step 6: Execute Commit
+## Step 5: Execute Commit
 
 Run the commit command:
 ```bash

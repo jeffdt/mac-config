@@ -10,14 +10,19 @@ SHELL_DIR="${0:a:h}"
 alias config='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 
 # Common configs
-source "$SHELL_DIR/common/utils.zsh"
-source "$SHELL_DIR/common/git.zsh"
-source "$SHELL_DIR/common/fzf.zsh"
-source "$SHELL_DIR/common/aliases.zsh"
-source "$SHELL_DIR/common/functions.zsh"
+for f in "$SHELL_DIR"/common/*.zsh; do
+  source "$f"
+done
 
 # Starship prompt
-eval "$(starship init zsh)"
+if command -v starship >/dev/null 2>&1; then
+  eval "$(starship init zsh)"
+fi
+
+# tp (teleport), directory portals
+if command -v warp-core >/dev/null 2>&1; then
+  eval "$(warp-core --init zsh)"
+fi
 
 # Machine-specific config (not tracked in git)
 [[ -f "$SHELL_DIR/local.zsh" ]] && source "$SHELL_DIR/local.zsh"
