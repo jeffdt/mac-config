@@ -1,0 +1,39 @@
+#!/bin/bash
+# daily-log-claude - Get Claude Code session activity for a date or date range
+# Usage: daily-log-claude YYYY-MM-DD [END_YYYY-MM-DD]
+#
+# Single date: daily-log-claude 2026-03-01
+# Date range:  daily-log-claude 2026-02-23 2026-03-01
+
+set -e
+
+START_DATE="${1:-$(date +%Y-%m-%d)}"
+END_DATE="${2:-$START_DATE}"
+HISTORY_FILE="$HOME/.claude/history.jsonl"
+
+if [[ ! -f "$HISTORY_FILE" ]]; then
+    echo "No history file found at $HISTORY_FILE"
+    exit 1
+fi
+
+cat "$HISTORY_FILE" | jq -r --arg start "$START_DATE" --arg end "$END_DATE" '
+  select(
+    (.timestamp/1000 | strftime("%Y-%m-%d")) >= $start and
+    (.timestamp/1000 | strftime("%Y-%m-%d")) <= $end
+  ) |
+  "\(.timestamp/1000 | strftime("%Y-%m-%d"))\t\(.timestamp/1000 | strftime("%H:%M"))\t\(.project | split("/")[-1])\t\(.display[0:100])"
+' 2>/dev/null | sort | awk -F'\t' '
+  BEGIN { current_date = "" }
+  {
+    if ($1 != current_date) {
+      if (current_date != "") print ""
+      print "=== Claude Code Sessions for " $1 " ==="
+      print ""
+      current_date = $1
+    }
+    print $2 " | " $3 " | " $4
+  }
+  END {
+    if (current_date == "") print "No sessions found for the requested date(s)"
+  }
+'

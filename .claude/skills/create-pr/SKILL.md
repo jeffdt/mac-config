@@ -82,9 +82,13 @@ Otherwise:
 2. If not known, invoke `/ticket:find` with no arguments to auto-detect the ticket from branch name, commits, and conversation.
 3. If auto-find returns a ticket, use it.
 4. If auto-find returns "none" or no match, ask the user to provide a ticket identifier manually. Accept "none" if they confirm.
-5. Place the ticket link at the **beginning** of the PR description.
-6. Format: `https://linear.app/klaviyo/issue/{TICKET-ID}` (e.g., AMPSS-123)
-7. If the user confirmed "none", proceed without a ticket link.
+5. Place the ticket link at the **beginning** of the PR description using Linear's trigger phrase.
+6. Format the ticket line as one of:
+   - `Closes https://linear.app/klaviyo/issue/{TICKET-ID}` when this PR completes the ticket and no follow-up PRs are expected.
+   - `Part of https://linear.app/klaviyo/issue/{TICKET-ID}` when this PR is one PR in a sequence for the ticket, or when follow-up PRs are expected.
+7. Default to `Part of` if the PR is clearly a phase, migration step, scaffold, partial implementation, or otherwise does not finish the whole ticket.
+8. If unsure whether the PR completes the ticket, ask the user whether to use `Closes` or `Part of`.
+9. If the user confirmed "none", proceed without a ticket link.
 
 ## Step 7: Write the PR Description
 
@@ -101,7 +105,7 @@ Write a short, natural paragraph (2-4 sentences) explaining **why** the change e
 - Section headers like "Testing", "Summary", "Changes" (unless repo template requires them)
 - Self-evaluation ("clean", "robust", "comprehensive", etc.)
 
-**Follow the repo's PR template structure if one exists.** When no template is present, the description is just the ticket link (from Step 6) followed by the paragraph.
+**Follow the repo's PR template structure if one exists.** When no template is present, the description is just the Linear trigger line from Step 6 (`Closes ...` or `Part of ...`) followed by the paragraph. If a template has a Linear, ticket, issue, or description field, put the trigger line there so Linear can auto-link it.
 
 ## Step 8: Create the PR
 

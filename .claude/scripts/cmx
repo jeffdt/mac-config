@@ -1,0 +1,722 @@
+#!/usr/bin/env bash
+# cmx — allowlist-friendly cmux wrapper.
+#
+# One subprocess per common cmux recipe so each verb can be allowlisted as
+# Bash(cmx <verb>:*).
+#
+# Verbs: status spawn new-workspace send send-key read wait-for settle
+#        close rename focus resolve list
+#
+# Workspace targets: focused | caller | sticky | workspace:N | <name>
+# Default workspace: focused, falling back to sticky ($CMUX_WORKSPACE_ID).
+#
+# Exit codes:
+#   0   success
+#   1   generic error / not in cmux
+#   2   bad arguments
+#   3   resource not found
+#   124 wait-for / settle timeout
+
+set -euo pipefail
+
+readonly ERR_GENERIC=1
+readonly ERR_USAGE=2
+readonly ERR_NOTFOUND=3
+readonly ERR_TIMEOUT=124
+
+die()       { printf 'cmx: %s\n' "$*" >&2; exit "$ERR_GENERIC"; }
+usage()     { printf 'cmx: %s\n' "$*" >&2; exit "$ERR_USAGE"; }
+notfound()  { printf 'cmx: %s\n' "$*" >&2; exit "$ERR_NOTFOUND"; }
+
+json_escape() {
+    local s=$1
+    s=${s//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//$'\n'/\\n}
+    s=${s//$'\r'/\\r}
+    s=${s//$'\t'/\\t}
+    printf '%s' "$s"
+}
+
+# Single-quote-escape for embedding a value inside a sent shell command.
+sq() {
+    local s=$1
+    s=${s//\'/\'\\\'\'}
+    printf "'%s'" "$s"
+}
+
+# Extract `<prefix>:N` token from a cmux "OK ..." status line.
+parse_ref() {
+    local line=$1 prefix=$2 tok
+    for tok in $line; do
+        if [[ "$tok" == "${prefix}:"* ]]; then
+            printf '%s' "$tok"
+            return 0
+        fi
+    done
+    return 1
+}
+
+require_in_cmux() {
+    command -v cmux >/dev/null 2>&1 || die "cmux not installed"
+    [[ -n "${CMUX_WORKSPACE_ID:-}" ]] || die "not in a cmux terminal (no \$CMUX_WORKSPACE_ID)"
+    cmux ping >/dev/null 2>&1 || die "cmux daemon not responding"
+}
+
+# Read .focused.workspace_ref or .caller.workspace_ref from `cmux identify`.
+_identify_workspace() {
+    local which=$1 json ref
+    command -v jq >/dev/null 2>&1 || return 1
+    json=$(cmux identify 2>/dev/null) || return 1
+    ref=$(printf '%s' "$json" | jq -r ".${which}.workspace_ref // empty" 2>/dev/null) || return 1
+    [[ -n "$ref" ]] || return 1
+    printf '%s' "$ref"
+}
+
+_resolve_workspace_by_name() {
+    local name=$1 ref
+    ref=$(cmux list-workspaces 2>/dev/null | awk -v name="$name" '
+        { sub(/^\* /, ""); sub(/^ +/, ""); }
+        /^workspace:[0-9]+/ {
+            line = $0
+            sub(/[ \t]+\[[^]]*\][ \t]*$/, "", line)
+            n = index(line, " ")
+            ref = substr(line, 1, n-1)
+            rest = substr(line, n+1)
+            sub(/^[ \t]+/, "", rest); sub(/[ \t]+$/, "", rest)
+            if (rest == name) { print ref; exit }
+        }') || return 1
+    [[ -n "$ref" ]] || return 1
+    printf '%s' "$ref"
+}
+
+# Resolve a workspace target. Accepts focused|caller|sticky|workspace:N|<name>.
+# Empty target = default: try focused, fall back to sticky.
+resolve_workspace() {
+    local target=${1:-}
+    case "$target" in
+        workspace:[0-9]*)
+            printf '%s' "$target"
+            ;;
+        focused)
+            _identify_workspace focused
+            ;;
+        caller)
+            _identify_workspace caller
+            ;;
+        sticky)
+            [[ -n "${CMUX_WORKSPACE_ID:-}" ]] || return 1
+            printf '%s' "$CMUX_WORKSPACE_ID"
+            ;;
+        '')
+            if _identify_workspace focused 2>/dev/null; then
+                return 0
+            fi
+            [[ -n "${CMUX_WORKSPACE_ID:-}" ]] || return 1
+            printf '%s' "$CMUX_WORKSPACE_ID"
+            ;;
+        *)
+            _resolve_workspace_by_name "$target"
+            ;;
+    esac
+}
+
+# Resolve a tab to `surface:N` inside a workspace. Accepts surface:N or title.
+resolve_surface() {
+    local ws=$1 ref_or_title=$2 sid
+    if [[ "$ref_or_title" == surface:[0-9]* ]]; then
+        printf '%s' "$ref_or_title"
+        return 0
+    fi
+    sid=$(cmux tree --workspace "$ws" 2>/dev/null | awk '
+        match($0, /surface surface:[0-9]+/) {
+            ref = substr($0, RSTART+8, RLENGTH-8)
+            if (match($0, /"[^"]*"/)) {
+                title = substr($0, RSTART+1, RLENGTH-2)
+                print ref "\t" title
+            }
+        }' | awk -F'\t' -v t="$ref_or_title" '$2 == t { print $1; exit }') || return 1
+    [[ -n "$sid" ]] || return 1
+    printf '%s' "$sid"
+}
+
+# Three-call focus dance: focus the tab, select its workspace, foreground cmux.
+focus_tab() {
+    local ws=$1 sid=$2
+    cmux move-surface --workspace "$ws" --surface "$sid" --focus true >/dev/null
+    cmux select-workspace --workspace "$ws" >/dev/null
+    open -a cmux
+}
+
+# --------------------------- verbs ---------------------------
+
+cmd_status() {
+    local json=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json) json=1; shift ;;
+            *) usage "status: unknown flag: $1" ;;
+        esac
+    done
+
+    local installed=false daemon_up=false in_cmux=false
+    if command -v cmux >/dev/null 2>&1; then
+        installed=true
+        cmux ping >/dev/null 2>&1 && daemon_up=true
+    fi
+    [[ -n "${CMUX_WORKSPACE_ID:-}" ]] && in_cmux=true
+
+    if (( json )); then
+        printf '{"installed":%s,"daemon_up":%s,"in_cmux":%s,"workspace_id":"%s","surface_id":"%s"}\n' \
+            "$installed" "$daemon_up" "$in_cmux" \
+            "$(json_escape "${CMUX_WORKSPACE_ID:-}")" \
+            "$(json_escape "${CMUX_SURFACE_ID:-}")"
+    else
+        printf 'installed=%s daemon_up=%s in_cmux=%s workspace=%s surface=%s\n' \
+            "$installed" "$daemon_up" "$in_cmux" \
+            "${CMUX_WORKSPACE_ID:-<unset>}" \
+            "${CMUX_SURFACE_ID:-<unset>}"
+    fi
+
+    [[ "$in_cmux" == true ]] || exit "$ERR_GENERIC"
+}
+
+cmd_spawn() {
+    local workspace='' cwd='' cmd='' title='' focus=1 json=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --workspace) workspace=$2; shift 2 ;;
+            --cwd) cwd=$2; shift 2 ;;
+            --cmd) cmd=$2; shift 2 ;;
+            --title) title=$2; shift 2 ;;
+            --focus) focus=1; shift ;;
+            --no-focus) focus=0; shift ;;
+            --json) json=1; shift ;;
+            *) usage "spawn: unknown flag: $1" ;;
+        esac
+    done
+
+    require_in_cmux
+    local ws
+    ws=$(resolve_workspace "$workspace") || notfound "spawn: could not resolve workspace: ${workspace:-<focused>}"
+
+    local surface_line sid
+    surface_line=$(cmux new-surface --type terminal --workspace "$ws") \
+        || die "spawn: cmux new-surface failed"
+    sid=$(parse_ref "$surface_line" surface) \
+        || die "spawn: could not parse surface ref from: $surface_line"
+
+    local to_send=''
+    if [[ -n "$cwd" && -n "$cmd" ]]; then
+        to_send="cd $(sq "$cwd") && $cmd"
+    elif [[ -n "$cwd" ]]; then
+        to_send="cd $(sq "$cwd")"
+    elif [[ -n "$cmd" ]]; then
+        to_send="$cmd"
+    fi
+    if [[ -n "$to_send" ]]; then
+        cmux send --workspace "$ws" --surface "$sid" -- "${to_send}\n" >/dev/null \
+            || die "spawn: cmux send failed"
+    fi
+
+    if [[ -n "$title" ]]; then
+        cmux rename-tab --workspace "$ws" --surface "$sid" "$title" >/dev/null \
+            || printf 'cmx: spawn: rename-tab failed (continuing)\n' >&2
+    fi
+
+    if (( focus )); then
+        focus_tab "$ws" "$sid"
+    fi
+
+    if (( json )); then
+        printf '{"workspace":"%s","surface":"%s","title":"%s"}\n' \
+            "$(json_escape "$ws")" \
+            "$(json_escape "$sid")" \
+            "$(json_escape "$title")"
+    else
+        printf '%s\n' "$sid"
+    fi
+}
+
+cmd_new_workspace() {
+    local name='' cwd='' cmd='' focus=1 json=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --name) name=$2; shift 2 ;;
+            --cwd) cwd=$2; shift 2 ;;
+            --cmd) cmd=$2; shift 2 ;;
+            --focus) focus=1; shift ;;
+            --no-focus) focus=0; shift ;;
+            --json) json=1; shift ;;
+            *) usage "new-workspace: unknown flag: $1" ;;
+        esac
+    done
+    [[ -n "$name" ]] || usage "new-workspace: --name required"
+
+    require_in_cmux
+
+    local args=(new-workspace --name "$name")
+    [[ -n "$cwd" ]] && args+=(--cwd "$cwd")
+    [[ -n "$cmd" ]] && args+=(--command "$cmd")
+
+    local out ws
+    out=$(cmux "${args[@]}") || die "new-workspace: cmux new-workspace failed"
+    ws=$(parse_ref "$out" workspace) || die "new-workspace: could not parse workspace ref from: $out"
+
+    if (( focus )); then
+        cmux select-workspace --workspace "$ws" >/dev/null
+        open -a cmux
+    fi
+
+    if (( json )); then
+        printf '{"workspace":"%s","name":"%s"}\n' \
+            "$(json_escape "$ws")" "$(json_escape "$name")"
+    else
+        printf '%s\n' "$ws"
+    fi
+}
+
+cmd_send() {
+    local workspace='' tab='' cmd='' no_enter=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --workspace) workspace=$2; shift 2 ;;
+            --tab|--surface) tab=$2; shift 2 ;;
+            --cmd) cmd=$2; shift 2 ;;
+            --no-enter) no_enter=1; shift ;;
+            *) usage "send: unknown flag: $1" ;;
+        esac
+    done
+    [[ -n "$tab" ]] || usage "send: --tab required"
+    [[ -n "$cmd" ]] || usage "send: --cmd required"
+
+    require_in_cmux
+
+    local ws sid payload
+    ws=$(resolve_workspace "$workspace") || notfound "send: could not resolve workspace"
+    sid=$(resolve_surface "$ws" "$tab") || notfound "send: could not resolve tab '$tab' in $ws"
+
+    if (( no_enter )); then
+        payload=$cmd
+    else
+        payload="${cmd}\n"
+    fi
+    cmux send --workspace "$ws" --surface "$sid" -- "$payload" >/dev/null
+}
+
+cmd_send_key() {
+    local workspace='' tab='' key=''
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --workspace) workspace=$2; shift 2 ;;
+            --tab|--surface) tab=$2; shift 2 ;;
+            --key) key=$2; shift 2 ;;
+            *) usage "send-key: unknown flag: $1" ;;
+        esac
+    done
+    [[ -n "$tab" ]] || usage "send-key: --tab required"
+    [[ -n "$key" ]] || usage "send-key: --key required"
+
+    require_in_cmux
+
+    local ws sid
+    ws=$(resolve_workspace "$workspace") || notfound "send-key: could not resolve workspace"
+    sid=$(resolve_surface "$ws" "$tab") || notfound "send-key: could not resolve tab '$tab' in $ws"
+
+    cmux send-key --workspace "$ws" --surface "$sid" "$key" >/dev/null
+}
+
+cmd_read() {
+    local workspace='' tab='' lines=200 scrollback=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --workspace) workspace=$2; shift 2 ;;
+            --tab|--surface) tab=$2; shift 2 ;;
+            --lines) lines=$2; shift 2 ;;
+            --scrollback) scrollback=1; shift ;;
+            *) usage "read: unknown flag: $1" ;;
+        esac
+    done
+    [[ -n "$tab" ]] || usage "read: --tab required"
+
+    require_in_cmux
+
+    local ws sid
+    ws=$(resolve_workspace "$workspace") || notfound "read: could not resolve workspace"
+    sid=$(resolve_surface "$ws" "$tab") || notfound "read: could not resolve tab '$tab' in $ws"
+
+    local args=(read-screen --workspace "$ws" --surface "$sid" --lines "$lines")
+    (( scrollback )) && args+=(--scrollback)
+    cmux "${args[@]}"
+}
+
+cmd_wait_for() {
+    local workspace='' tab='' pattern='' interval=2 timeout=600
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --workspace) workspace=$2; shift 2 ;;
+            --tab|--surface) tab=$2; shift 2 ;;
+            --pattern) pattern=$2; shift 2 ;;
+            --interval) interval=$2; shift 2 ;;
+            --timeout) timeout=$2; shift 2 ;;
+            *) usage "wait-for: unknown flag: $1" ;;
+        esac
+    done
+    [[ -n "$tab" ]] || usage "wait-for: --tab required"
+    [[ -n "$pattern" ]] || usage "wait-for: --pattern required"
+
+    require_in_cmux
+
+    local ws sid
+    ws=$(resolve_workspace "$workspace") || notfound "wait-for: could not resolve workspace"
+    sid=$(resolve_surface "$ws" "$tab") || notfound "wait-for: could not resolve tab '$tab' in $ws"
+
+    local elapsed=0 screen
+    while (( elapsed < timeout )); do
+        screen=$(cmux read-screen --workspace "$ws" --surface "$sid" --lines 200 2>/dev/null || true)
+        if printf '%s' "$screen" | grep -Eq -- "$pattern"; then
+            return 0
+        fi
+        sleep "$interval"
+        elapsed=$(( elapsed + interval ))
+    done
+    exit "$ERR_TIMEOUT"
+}
+
+cmd_settle() {
+    local workspace='' tab='' interval=3 budget=90 required_stable=2
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --workspace) workspace=$2; shift 2 ;;
+            --tab|--surface) tab=$2; shift 2 ;;
+            --interval) interval=$2; shift 2 ;;
+            --budget) budget=$2; shift 2 ;;
+            --required-stable) required_stable=$2; shift 2 ;;
+            *) usage "settle: unknown flag: $1" ;;
+        esac
+    done
+    [[ -n "$tab" ]] || usage "settle: --tab required"
+
+    require_in_cmux
+
+    local ws sid
+    ws=$(resolve_workspace "$workspace") || notfound "settle: could not resolve workspace"
+    sid=$(resolve_surface "$ws" "$tab") || notfound "settle: could not resolve tab '$tab' in $ws"
+
+    local elapsed=0 stable=0 prev='' curr
+    while (( elapsed < budget )); do
+        if ! curr=$(cmux read-screen --workspace "$ws" --surface "$sid" --lines 200 2>&1); then
+            printf '%s\n' "$curr" >&2
+            exit "$ERR_GENERIC"
+        fi
+        if [[ "$curr" == "$prev" ]]; then
+            stable=$(( stable + 1 ))
+            if (( stable >= required_stable )); then
+                printf '%s\n' "$curr"
+                return 0
+            fi
+        else
+            stable=0
+        fi
+        prev=$curr
+        sleep "$interval"
+        elapsed=$(( elapsed + interval ))
+    done
+
+    printf '%s\n' "$prev"
+    exit "$ERR_TIMEOUT"
+}
+
+cmd_close() {
+    local workspace='' tab=''
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --workspace) workspace=$2; shift 2 ;;
+            --tab|--surface) tab=$2; shift 2 ;;
+            *) usage "close: unknown flag: $1" ;;
+        esac
+    done
+    [[ -n "$tab" ]] || usage "close: --tab required"
+
+    require_in_cmux
+
+    local ws sid
+    ws=$(resolve_workspace "$workspace") || notfound "close: could not resolve workspace"
+    sid=$(resolve_surface "$ws" "$tab") || notfound "close: could not resolve tab '$tab' in $ws"
+
+    cmux close-surface --workspace "$ws" --surface "$sid" >/dev/null
+}
+
+cmd_rename() {
+    local workspace='' tab='' title=''
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --workspace) workspace=$2; shift 2 ;;
+            --tab|--surface) tab=$2; shift 2 ;;
+            --title) title=$2; shift 2 ;;
+            *) usage "rename: unknown flag: $1" ;;
+        esac
+    done
+    [[ -n "$tab" ]] || usage "rename: --tab required"
+    [[ -n "$title" ]] || usage "rename: --title required"
+
+    require_in_cmux
+
+    local ws sid
+    ws=$(resolve_workspace "$workspace") || notfound "rename: could not resolve workspace"
+    sid=$(resolve_surface "$ws" "$tab") || notfound "rename: could not resolve tab '$tab' in $ws"
+
+    cmux rename-tab --workspace "$ws" --surface "$sid" "$title" >/dev/null
+}
+
+cmd_focus() {
+    local workspace='' tab='' app=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --workspace) workspace=$2; shift 2 ;;
+            --tab|--surface) tab=$2; shift 2 ;;
+            --app) app=1; shift ;;
+            *) usage "focus: unknown flag: $1" ;;
+        esac
+    done
+
+    require_in_cmux
+
+    local ws=''
+    if [[ -n "$workspace" || -n "$tab" ]]; then
+        ws=$(resolve_workspace "$workspace") || notfound "focus: could not resolve workspace"
+    fi
+    if [[ -n "$tab" ]]; then
+        local sid
+        sid=$(resolve_surface "$ws" "$tab") || notfound "focus: could not resolve tab '$tab' in $ws"
+        cmux move-surface --workspace "$ws" --surface "$sid" --focus true >/dev/null
+    fi
+    if [[ -n "$workspace" ]]; then
+        cmux select-workspace --workspace "$ws" >/dev/null
+    fi
+    if (( app )); then
+        open -a cmux
+    fi
+}
+
+cmd_resolve() {
+    local kind=${1:-}
+    [[ -n "$kind" ]] || usage "resolve: requires 'workspace' or 'tab' subcommand"
+    shift
+    case "$kind" in
+        workspace)
+            local name='' json=0
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --json) json=1; shift ;;
+                    --*) usage "resolve workspace: unknown flag: $1" ;;
+                    *)
+                        if [[ -z "$name" ]]; then name=$1; shift
+                        else usage "resolve workspace: extra argument: $1"
+                        fi ;;
+                esac
+            done
+            [[ -n "$name" ]] || usage "resolve workspace: name required"
+            require_in_cmux
+            local ws
+            ws=$(_resolve_workspace_by_name "$name") || notfound "resolve workspace: '$name' not found"
+            if (( json )); then
+                printf '{"workspace":"%s","name":"%s"}\n' \
+                    "$(json_escape "$ws")" "$(json_escape "$name")"
+            else
+                printf '%s\n' "$ws"
+            fi
+            ;;
+        tab)
+            local workspace='' title='' json=0
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --workspace) workspace=$2; shift 2 ;;
+                    --title) title=$2; shift 2 ;;
+                    --json) json=1; shift ;;
+                    *) usage "resolve tab: unknown flag: $1" ;;
+                esac
+            done
+            [[ -n "$title" ]] || usage "resolve tab: --title required"
+            require_in_cmux
+            local ws sid
+            ws=$(resolve_workspace "$workspace") || notfound "resolve tab: could not resolve workspace"
+            sid=$(resolve_surface "$ws" "$title") || notfound "resolve tab: '$title' not found in $ws"
+            if (( json )); then
+                printf '{"workspace":"%s","surface":"%s","title":"%s"}\n' \
+                    "$(json_escape "$ws")" "$(json_escape "$sid")" "$(json_escape "$title")"
+            else
+                printf '%s\n' "$sid"
+            fi
+            ;;
+        *)
+            usage "resolve: unknown subcommand: $kind"
+            ;;
+    esac
+}
+
+cmd_list() {
+    local kind=${1:-}
+    [[ -n "$kind" ]] || usage "list: requires 'workspaces' or 'tabs' subcommand"
+    shift
+    case "$kind" in
+        workspaces)
+            local json=0
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --json) json=1; shift ;;
+                    *) usage "list workspaces: unknown flag: $1" ;;
+                esac
+            done
+            require_in_cmux
+            if (( json )); then
+                _list_workspaces_json
+            else
+                cmux list-workspaces
+            fi
+            ;;
+        tabs)
+            local workspace='' json=0
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --workspace) workspace=$2; shift 2 ;;
+                    --json) json=1; shift ;;
+                    *) usage "list tabs: unknown flag: $1" ;;
+                esac
+            done
+            require_in_cmux
+            local ws
+            ws=$(resolve_workspace "$workspace") || notfound "list tabs: could not resolve workspace"
+            if (( json )); then
+                _list_tabs_json "$ws"
+            else
+                _list_tabs_plain "$ws"
+            fi
+            ;;
+        *)
+            usage "list: unknown subcommand: $kind"
+            ;;
+    esac
+}
+
+_list_workspaces_json() {
+    cmux list-workspaces | awk '
+    BEGIN { printf "["; first = 1 }
+    {
+        line = $0
+        focused = "false"
+        if (sub(/^\* /, "", line)) focused = "true"
+        sub(/^ +/, "", line)
+        if (line !~ /^workspace:[0-9]+/) next
+        flag = ""
+        if (match(line, /[ \t]+\[[^]]*\][ \t]*$/)) {
+            flag = substr(line, RSTART, RLENGTH)
+            sub(/[ \t]+\[[^]]*\][ \t]*$/, "", line)
+            sub(/^[ \t]+\[/, "", flag); sub(/\][ \t]*$/, "", flag)
+        }
+        n = index(line, " ")
+        if (n == 0) { ref = line; name = "" }
+        else {
+            ref = substr(line, 1, n-1)
+            name = substr(line, n+1)
+            sub(/^ +/, "", name); sub(/ +$/, "", name)
+        }
+        gsub(/\\/, "\\\\", name); gsub(/"/, "\\\"", name)
+        gsub(/\\/, "\\\\", flag); gsub(/"/, "\\\"", flag)
+        if (!first) printf ","
+        first = 0
+        printf "{\"workspace\":\"%s\",\"name\":\"%s\",\"focused\":%s,\"flag\":\"%s\"}", ref, name, focused, flag
+    }
+    END { print "]" }'
+}
+
+_list_tabs_plain() {
+    local ws=$1
+    cmux tree --workspace "$ws" | awk '
+    match($0, /surface surface:[0-9]+/) {
+        ref = substr($0, RSTART+8, RLENGTH-8)
+        title = ""
+        if (match($0, /"[^"]*"/)) {
+            title = substr($0, RSTART+1, RLENGTH-2)
+        }
+        selected = (index($0, "[selected]") > 0) ? "*" : " "
+        printf "%s %s  %s\n", selected, ref, title
+    }'
+}
+
+_list_tabs_json() {
+    local ws=$1
+    cmux tree --workspace "$ws" | awk -v ws="$ws" '
+    BEGIN { printf "{\"workspace\":\"%s\",\"tabs\":[", ws; first = 1 }
+    match($0, /surface surface:[0-9]+/) {
+        ref = substr($0, RSTART+8, RLENGTH-8)
+        title = ""
+        if (match($0, /"[^"]*"/)) {
+            title = substr($0, RSTART+1, RLENGTH-2)
+        }
+        selected = (index($0, "[selected]") > 0) ? "true" : "false"
+        gsub(/\\/, "\\\\", title); gsub(/"/, "\\\"", title)
+        if (!first) printf ","
+        first = 0
+        printf "{\"surface\":\"%s\",\"title\":\"%s\",\"selected\":%s}", ref, title, selected
+    }
+    END { print "]}" }'
+}
+
+usage_full() {
+    cat <<'EOF'
+cmx — allowlist-friendly cmux wrapper
+
+Verbs:
+  status [--json]
+  spawn [--workspace W] [--cwd PATH] [--cmd TEXT] [--title NAME]
+        [--focus|--no-focus] [--json]
+  new-workspace --name NAME [--cwd PATH] [--cmd TEXT]
+        [--focus|--no-focus] [--json]
+  send  [--workspace W] --tab REF|TITLE --cmd TEXT [--no-enter]
+  send-key [--workspace W] --tab REF|TITLE --key NAME
+  read  [--workspace W] --tab REF|TITLE [--lines N] [--scrollback]
+  wait-for [--workspace W] --tab REF|TITLE --pattern REGEX
+           [--interval N] [--timeout N]
+  settle [--workspace W] --tab REF|TITLE
+         [--interval N] [--budget N] [--required-stable N]
+  close --workspace W --tab REF|TITLE
+  rename --workspace W --tab REF|TITLE --title NEW
+  focus [--workspace W] [--tab REF|TITLE] [--app]
+  resolve workspace NAME [--json]
+  resolve tab --workspace W --title TITLE [--json]
+  list workspaces [--json]
+  list tabs --workspace W [--json]
+
+Workspace targets: focused | caller | sticky | workspace:N | <name>
+Default workspace: focused (fallback: sticky / $CMUX_WORKSPACE_ID)
+Tab refs: surface:N or a tab title
+
+Exit codes: 0 ok | 1 generic/not-in-cmux | 2 bad args | 3 not found | 124 timeout
+EOF
+}
+
+main() {
+    local verb=${1:-}
+    [[ -n "$verb" ]] || { usage_full >&2; exit "$ERR_USAGE"; }
+    shift
+    case "$verb" in
+        status)        cmd_status "$@" ;;
+        spawn)         cmd_spawn "$@" ;;
+        new-workspace) cmd_new_workspace "$@" ;;
+        send)          cmd_send "$@" ;;
+        send-key)      cmd_send_key "$@" ;;
+        read)          cmd_read "$@" ;;
+        wait-for)      cmd_wait_for "$@" ;;
+        settle)        cmd_settle "$@" ;;
+        close)         cmd_close "$@" ;;
+        rename)        cmd_rename "$@" ;;
+        focus)         cmd_focus "$@" ;;
+        resolve)       cmd_resolve "$@" ;;
+        list)          cmd_list "$@" ;;
+        -h|--help|help) usage_full ;;
+        *) usage "unknown verb: $verb" ;;
+    esac
+}
+
+main "$@"

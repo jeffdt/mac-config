@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# csa: live (or one-shot) health check across app, k-repo, fender services.
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=./lib.sh disable=SC1091
+source "$SCRIPT_DIR/lib.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: csa [command]
+
+Commands:
+  watch (default)  Live health table, refreshes every 2s. ctrl+c to stop.
+  status           One-shot snapshot.
+EOF
+}
+
+probe() {
+  # Connection-level liveness check, not strict 2xx. fender's webpack-dev-server
+  # 404s its root path even when fully compiled, so we drop -f and treat any
+  # HTTP response (including 404) as "the port is alive". App and k-repo health
+  # endpoints return 200 only when truly ready, so their behavior is unchanged.
+  local url=$1
+  if curl -sk -o /dev/null --max-time 1 "$url" 2>&1; then
+    printf '\033[32m✓ ready\033[0m  '
+  else
+    printf '\033[31m✗ down\033[0m   '
+  fi
+}
+
+render_once() {
+  # Probe all services in parallel, build the entire frame in a buffer, then
+  # write it in one printf. Sequential per-row writes caused visible tearing
+  # because curl --max-time can take up to 1s per service. With parallel
+  # probes the wait collapses to max(t), and the atomic flush eliminates the
+  # row-by-row reveal.
+  local services=() urls=() svc
+  while IFS= read -r svc; do
+    services+=("$svc")
+    urls+=("$(get_service_field "$svc" ready_url)")
+  done < <(list_services)
+
+  local tmp i
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/csa.XXXXXX")
+  for i in "${!services[@]}"; do
+    probe "${urls[$i]}" > "$tmp/$i" &
+  done
+  wait
+
+  local out frame status_text
+  out=$'\033[2J\033[H'
+  printf -v frame '\033[1;36mcsa health\033[0m  \033[2m%s\033[0m\n\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+  out+=$frame
+  for i in "${!services[@]}"; do
+    status_text=$(<"$tmp/$i")
+    printf -v frame '  %-10s %s  \033[2m%s\033[0m\n' "${services[$i]}" "$status_text" "${urls[$i]}"
+    out+=$frame
+  done
+  rm -rf "$tmp"
+  printf '%s' "$out"
+}
+
+cmd_watch() {
+  while true; do
+    render_once
+    sleep 2
+  done
+}
+
+cmd_status() {
+  render_once
+}
+
+main() {
+  [[ -f "$CSA_CONFIG" ]] || { echo "csa: config missing at $CSA_CONFIG" >&2; exit 2; }
+  local cmd=${1:-watch}
+  case "$cmd" in
+    watch)     cmd_watch ;;
+    status)    cmd_status ;;
+    -h|--help) usage ;;
+    *)         echo "csa: unknown command: $cmd" >&2; usage; exit 1 ;;
+  esac
+}
+
+main "$@"

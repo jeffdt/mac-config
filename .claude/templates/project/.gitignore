@@ -1,0 +1,33 @@
+# Ignore everything by default
+*
+
+# Ignored dirs: personal working notes, not committed
+# (artifacts/ for scratch docs, drafts/ for WIPs)
+artifacts/
+drafts/
+
+# Track project meta files
+!.gitignore
+!README.md
+!CLAUDE.md
+!.claude/
+!.claude/settings.json
+# settings.local.json is personal (overrides settings.json) and stays ignored
+
+# Track navigation maps
+!project-map.md
+!map/
+!map/**
+
+# Track specs, plans, research, and prompts
+!specs/
+!specs/**
+!plans/
+!plans/**
+!research/
+!research/**
+!prompts/
+!prompts/**
+
+# Track loose reference docs at root
+!*.md
