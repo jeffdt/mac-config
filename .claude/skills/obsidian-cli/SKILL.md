@@ -1,6 +1,15 @@
 ---
 name: obsidian-cli
-description: This skill should be used when interacting with Obsidian vaults from the terminal, including "read a note", "search my vault", "find notes", "append to daily note", "add to my daily note", "create a note", "list tasks", "check tags", "search obsidian", "check backlinks", "find orphaned notes", "open a note", or any task involving the `obsidian` CLI command. Also triggers on references to Obsidian notes, daily notes, or vault content when a CLI operation is implied.
+description: >-
+  Use for vault-semantic operations on the Obsidian vault that are painful to reproduce with raw file
+  ops, OR when a task explicitly invokes the `obsidian` CLI. Triggers include daily-note operations
+  ("append to daily note", "today's daily note", "this week's daily notes"), link graph queries
+  ("backlinks to X", "orphaned notes", "unresolved links", "deadends"), tag aggregation ("list tags
+  with counts", "files tagged #X"), task queries ("open tasks across my vault", "tasks in daily
+  notes"), frontmatter property read/write, template-based note creation, and wikilink-style name
+  resolution (with aliases). DO NOT use for: reading a note when the path is known (use Read on
+  `~/o/...`), grepping markdown content (use `rg ~/o`), bulk renames or mass find-replace, or any
+  headless context where Obsidian may not be running. The CLI requires the Obsidian app to be open.
 ---
 
 # Obsidian CLI

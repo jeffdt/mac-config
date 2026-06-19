@@ -1,0 +1,35 @@
+# Ignore everything by default
+*
+
+# Always ignore macOS metadata
+.DS_Store
+
+# But track these config files
+!.gitignore
+!CLAUDE.md
+!settings.json
+!statusline.sh
+!statusline.py
+
+# Track commands and agents directories
+!commands/
+!commands/**
+
+!agents/
+!agents/**
+
+!scripts/
+!scripts/**
+
+!skills/
+!skills/**
+
+!agent-prompts/
+!agent-prompts/**
+
+!templates/
+!templates/**
+
+# Re-ignore Python bytecode anywhere (must come after allowlists)
+**/__pycache__/
+**/*.pyc

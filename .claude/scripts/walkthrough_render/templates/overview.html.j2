@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en" style="background:#F4EEDF">
+<head>
+<meta charset="UTF-8">
+<title>PR Walkthrough — Overview — {{ pr.title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+{% include '_styles.css' %}
+
+/* ───────────── overview body ───────────── */
+.overview {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 64px 32px 120px;
+}
+
+/* PR header */
+.pr-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 18px;
+}
+.pr-eyebrow .num { color: var(--amber); }
+.pr-eyebrow .status {
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--indigo-soft);
+  color: var(--indigo);
+  border: 1px solid rgba(155, 179, 210, 0.2);
+}
+.pr-eyebrow .sep { flex: 1; height: 1px; background: linear-gradient(to right, var(--border), transparent); }
+
+h1.pr-title {
+  font-weight: 600;
+  font-size: 36px;
+  line-height: 1.15;
+  letter-spacing: -0.022em;
+  color: var(--ink);
+  margin-bottom: 14px;
+}
+
+.pr-attrs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink-mute);
+  margin-bottom: 36px;
+  font-variant-numeric: tabular-nums;
+}
+.pr-attrs .item { display: flex; align-items: baseline; gap: 6px; }
+.pr-attrs .item .k { color: var(--ink-faint); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.pr-attrs .item .v { color: var(--ink); }
+.pr-attrs .item .add { color: var(--moss); }
+.pr-attrs .item .rem { color: var(--rose-mute); }
+.pr-attrs .item a { color: var(--indigo); text-decoration: none; border-bottom: 1px dotted var(--indigo-mute); }
+.pr-attrs .item a:hover { color: var(--ink); border-color: var(--ink); }
+
+/* narrative summary — the establishing shot */
+.narrative {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-variation-settings: 'opsz' 36;
+  font-size: 20px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  letter-spacing: -0.005em;
+  margin-bottom: 56px;
+  padding-left: 20px;
+  border-left: 2px solid var(--border-strong);
+  max-width: 720px;
+}
+.narrative code {
+  font-family: var(--mono);
+  font-size: 16px;
+  color: var(--amber);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-variation-settings: normal;
+}
+
+/* section heads */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 56px 0 22px;
+}
+.section-head h2 {
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.section-head .ornament { flex: 1; height: 1px; background: var(--border); }
+.section-head .count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* reading order */
+.chunks-roadmap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chunk-row {
+  display: grid;
+  grid-template-columns: 38px 1fr auto auto;
+  gap: 16px;
+  align-items: baseline;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.chunk-row:hover {
+  background: var(--surface);
+  border-color: var(--border);
+}
+.chunk-row .n {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 300;
+  font-variation-settings: 'opsz' 48;
+  font-size: 26px;
+  line-height: 1;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.chunk-row:hover .n { color: var(--amber); }
+.chunk-row .meat { min-width: 0; }
+.chunk-row .title {
+  font-weight: 500;
+  font-size: 15px;
+  color: var(--ink);
+  margin-bottom: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.chunk-row .title .path {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-weight: 400;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.chunk-row .blurb {
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+  font-variation-settings: 'opsz' 20;
+}
+.chunk-row .badges { display: flex; gap: 6px; align-items: center; }
+.chunk-row .mini-badge {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 7px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.chunk-row .mini-badge.c { color: var(--amber); border-color: rgba(232,165,85,0.25); }
+.chunk-row .mini-badge.s { color: var(--indigo); border-color: rgba(155,179,210,0.25); }
+.chunk-row .mini-badge.r { color: var(--moss-mute); }
+.chunk-row .go {
+  font-family: var(--mono);
+  font-size: 16px;
+  color: var(--ink-faint);
+  transition: color 0.15s, transform 0.15s;
+}
+.chunk-row:hover .go { color: var(--amber); transform: translateX(2px); }
+
+/* hotspots — recommended + open threads */
+.hotspots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hotspot {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--amber);
+  border-radius: 6px;
+  text-decoration: none;
+  color: inherit;
+  font-size: 13.5px;
+  transition: background 0.12s, border-color 0.12s;
+}
+.hotspot:hover { background: var(--surface-raised); border-color: var(--border-strong); }
+.hotspot.suggest { border-left-color: var(--indigo); }
+.hotspot.thread { border-left-color: var(--amber); }
+
+.hotspot .tag {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.hotspot.suggest .tag { color: var(--indigo); }
+.hotspot .num {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-weight: 500;
+}
+.hotspot .what { color: var(--ink); font-weight: 500; }
+.hotspot .what code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--amber);
+  font-weight: 400;
+}
+.hotspot.suggest .what code { color: var(--indigo); }
+.hotspot .loc {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.hotspot .chevron {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--ink-faint);
+  transition: color 0.12s, transform 0.12s;
+}
+.hotspot:hover .chevron { color: var(--amber); transform: translateX(2px); }
+.hotspot .thread-status {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 3px;
+  background: var(--amber-soft);
+  color: var(--amber);
+  border: 1px solid rgba(232, 165, 85, 0.2);
+}
+
+/* skipped files */
+.skipped {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.skip-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 14px;
+  align-items: baseline;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--ink-mute);
+}
+.skip-row .name { font-family: var(--mono); font-size: 13px; color: var(--ink-soft); }
+.skip-row .stats { font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--ink-faint); }
+.skip-row .stats .add { color: var(--moss-mute); }
+.skip-row .stats .rem { color: var(--rose-mute); }
+.skip-row .flag {
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber);
+  background: var(--amber-soft);
+  border: 1px solid rgba(232, 165, 85, 0.2);
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+
+/* test plan callout */
+.test-plan {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 22px 26px;
+  font-family: var(--serif);
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+.test-plan h3 {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 12px;
+}
+.test-plan ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px 0;
+}
+.test-plan li {
+  position: relative;
+  padding-left: 22px;
+  margin-bottom: 6px;
+}
+.test-plan li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--moss-mute);
+  font-family: var(--mono);
+  font-size: 14px;
+}
+.test-plan li code {
+  font-family: var(--mono);
+  font-size: 13.5px;
+  color: var(--amber);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.test-plan .note {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  font-style: italic;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+
+/* CTA */
+.cta-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 72px;
+  padding-top: 32px;
+  border-top: 1px solid var(--border);
+}
+.cta-row .hint {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 14.5px;
+  color: var(--ink-mute);
+  flex: 1;
+}
+.cta-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--bg);
+  background: var(--amber);
+  border: 1px solid var(--amber);
+  padding: 10px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.12s, box-shadow 0.15s;
+}
+.cta-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-cta);
+}
+.cta-primary .arr { font-family: var(--mono); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="left">
+    <span class="brand">PR Walkthrough</span>
+    <a class="pr" href="{{ pr.url }}" target="_blank" rel="noopener" title="Open #{{ pr.number }} on GitHub"><span class="num">#{{ pr.number }}</span><span class="title-text">{{ pr.title }}</span><span class="ext">↗</span></a>
+  </div>
+
+  <nav class="chunk-nav">
+    <a class="arrow" aria-disabled="true" aria-label="Previous">‹</a>
+    <details class="chunk-picker">
+      <summary>
+        <span class="progress">— / {{ chunks|length }}</span>
+        <span class="label">Overview</span>
+        <span class="caret">▾</span>
+      </summary>
+      <div class="chunk-menu">
+        <ol>
+          <li class="active"><a href="overview.html"><span class="check">●</span><span>Narrative overview</span><span class="count">—</span></a></li>
+          {% for chunk in chunks %}
+          <li>
+            <a href="chunk-{{ '%02d' % chunk.id }}.html">
+              <span class="check"></span>
+              <span>{{ chunk.id }}. {{ chunk.title }}</span>
+              <span class="count">{{ chunk.findings|length or '—' }}</span>
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </details>
+    <a class="arrow" href="chunk-01.html" aria-label="Next">›</a>
+  </nav>
+
+  <div class="right">
+    <span class="badge concerns"><span class="n">{{ totals.concerns }}</span>Concerns</span>
+    <span class="badge suggest"><span class="n">{{ totals.suggestions }}</span>Suggest.</span>
+    <span class="badge strengths"><span class="n">{{ totals.strengths }}</span>Strengths</span>
+    <span class="badge recommend"><span class="n">{{ totals.recommended }}</span>Recommend</span>
+  </div>
+</header>
+
+<div class="overview">
+
+  <!-- ───── PR header ───── -->
+  <div class="pr-eyebrow">
+    <span class="num">#{{ pr.number }}</span>
+    <span class="status">{{ pr.state }}</span>
+    <span class="sep"></span>
+    <span>{{ pr.updated_at }}</span>
+  </div>
+
+  <h1 class="pr-title">{{ pr.title }}</h1>
+
+  <div class="pr-attrs">
+    <div class="item"><span class="k">Author</span><span class="v">{{ pr.author }}</span></div>
+    <div class="item"><span class="k">Branch</span><span class="v">{{ pr.head_branch }} → {{ pr.base_branch }}</span></div>
+    <div class="item"><span class="k">Changes</span><span class="v"><span class="add">+{{ pr.additions }}</span> <span class="rem">−{{ pr.deletions }}</span> · {{ pr.files_changed }} files</span></div>
+    {% if pr.ticket %}
+    <div class="item"><span class="k">Ticket</span><span class="v"><a href="{{ pr.ticket.url }}">{{ pr.ticket.id }}</a></span></div>
+    {% endif %}
+  </div>
+
+  <!-- ───── narrative summary ───── -->
+  <p class="narrative">
+    {{ narrative|safe }}
+  </p>
+
+  <!-- ───── reading order ───── -->
+  <div class="section-head">
+    <h2>Reading order</h2>
+    <span class="ornament"></span>
+    <span class="count">{{ chunks|length }} chunks</span>
+  </div>
+  <div class="chunks-roadmap">
+    {% for chunk in chunks %}
+    <a class="chunk-row" href="chunk-{{ '%02d' % chunk.id }}.html">
+      <span class="n">{{ '%02d' % chunk.id }}</span>
+      <div class="meat">
+        <div class="title">{{ chunk.title }} <span class="path">{{ chunk.files|join(', ') }}</span></div>
+        <div class="blurb">{{ chunk.intro|safe }}</div>
+      </div>
+      <div class="badges">
+        <span class="mini-badge c">{{ chunk.findings|selectattr('type', 'equalto', 'concern')|list|length }}</span>
+        <span class="mini-badge s">{{ chunk.findings|selectattr('type', 'equalto', 'suggestion')|list|length }}</span>
+      </div>
+      <span class="go">›</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- ───── what needs your attention ───── -->
+  <div class="section-head">
+    <h2>What needs your attention</h2>
+    <span class="ornament"></span>
+    <span class="count">{{ hotspots|length }} highlighted</span>
+  </div>
+  <div class="hotspots">
+    {% for h in hotspots %}
+    <a class="hotspot{% if h.type == 'suggestion' %} suggest{% endif %}{% if h.thread %} thread{% endif %}" href="chunk-{{ '%02d' % h.chunk_id }}.html#f{{ h.id }}">
+      <span class="tag">{{ 'Sugg' if h.type == 'suggestion' else 'Concern' }}</span>
+      <span class="num">#{{ h.id }}</span>
+      <span class="what">{{ h.summary|safe }}</span>
+      {% if h.thread %}<span class="thread-status">{{ h.thread.status }}</span>{% endif %}
+      <span class="loc">Chunk {{ h.chunk_id }}{% if h.anchor %} · L{{ h.anchor.lines|join('–') }}{% else %} · file-wide{% endif %}</span>
+      <span class="chevron">›</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- ───── skipped files ───── -->
+  <div class="section-head">
+    <h2>Skipped (not walked through)</h2>
+    <span class="ornament"></span>
+    <span class="count">{{ skipped_files|length }} files</span>
+  </div>
+  <div class="skipped">
+    {% for f in skipped_files %}
+    <div class="skip-row">
+      <span class="name">{{ f.path }}</span>
+      <span class="stats"><span class="add">+{{ f.additions }}</span> <span class="rem">−{{ f.deletions }}</span></span>
+      {% if f.flag %}<span class="flag">{{ f.flag }}</span>{% else %}<span></span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ───── test plan ───── -->
+  <div class="section-head">
+    <h2>Stated test plan</h2>
+    <span class="ornament"></span>
+    <span class="count">from PR body</span>
+  </div>
+  {% if test_plan and test_plan.present %}
+  <div class="test-plan">
+    <h3>What the author said they tested</h3>
+    <ul>
+      {% for item in test_plan['items'] %}
+      <li>{{ item|safe }}</li>
+      {% endfor %}
+    </ul>
+    <div class="note">After you finish the chunks, the walkthrough will evaluate this plan, surface gaps from the Concerns and Suggestions above, and offer a focused smoke test before disposition.</div>
+  </div>
+  {% endif %}
+
+  <!-- ───── CTA ───── -->
+  <div class="cta-row">
+    <span class="hint">Ready? Start with Chunk 1: the schema and DTOs the rest of the PR sits on.</span>
+    <a class="cta-primary" href="chunk-01.html">
+      Start review <span class="arr">→</span>
+    </a>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -1,6 +1,6 @@
 ---
 description: Create a draft pull request for the current branch
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git push:*), Bash(gh pr:*)
+allowed-tools: Bash, Read, Edit, Grep, Glob, Agent, AskUserQuestion, SlashCommand:/ticket:find:*, SlashCommand:/pr:simplify:*
 ---
 
 ## Pre-computed Context

@@ -1,5 +1,7 @@
 # FZF setup
-source <(fzf --zsh)
+if command -v fzf >/dev/null 2>&1; then
+  source <(fzf --zsh)
+fi
 
 # Custom keybindings (commented out - uncomment to customize)
 # bindkey -r '^T'

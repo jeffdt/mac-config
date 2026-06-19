@@ -1,0 +1,400 @@
+#!/usr/bin/env bash
+# mux — unified multiplexer dispatcher.
+#
+# Fronts tmux (native, this file) and cmux (delegated to ~/.claude/scripts/cmx).
+# Backend detection: MUX_BACKEND override > $TMUX (tmux) > $CMUX_WORKSPACE_ID (cmux).
+# When both $TMUX and $CMUX_WORKSPACE_ID are set (tmux nested in a cmux surface),
+# tmux wins — it is the inner multiplexer the user navigates.
+#
+# Verbs: status spawn new-workspace send send-key read wait-for settle
+#        close rename focus resolve list
+# Exit codes: 0 ok | 1 generic/not-in-mux | 2 bad args | 3 not found | 124 timeout
+set -euo pipefail
+
+readonly ERR_GENERIC=1
+readonly ERR_USAGE=2
+readonly ERR_NOTFOUND=3
+# shellcheck disable=SC2034
+readonly ERR_TIMEOUT=124
+
+die()      { printf 'mux: %s\n' "$*" >&2; exit "$ERR_GENERIC"; }
+usage()    { printf 'mux: %s\n' "$*" >&2; exit "$ERR_USAGE"; }
+notfound() { printf 'mux: %s\n' "$*" >&2; exit "$ERR_NOTFOUND"; }
+
+# Normalize a key name to tmux's send-keys vocabulary.
+# Accepts cmx-style (ctrl+c, enter, alt+x) AND tmux-style (C-c, Enter, M-x).
+# The two forms do not collide, so accepting both removes any future migration.
+mux_key_to_tmux() {
+  local k=$1
+  k=${k//ctrl+/C-}
+  k=${k//control+/C-}
+  k=${k//alt+/M-}
+  k=${k//meta+/M-}
+  k=${k//shift+/S-}
+  case "${k,,}" in
+    enter|return)     printf 'Enter' ;;
+    tab)              printf 'Tab' ;;
+    escape|esc)       printf 'Escape' ;;
+    space)            printf 'Space' ;;
+    bspace|backspace) printf 'BSpace' ;;
+    *)                printf '%s' "$k" ;;
+  esac
+}
+
+# Resolve the active backend. Prints "tmux" or "cmux"; returns 1 if neither.
+mux_detect_backend() {
+  if [[ -n "${MUX_BACKEND:-}" ]]; then
+    case "$MUX_BACKEND" in
+      tmux|cmux) printf '%s' "$MUX_BACKEND"; return 0 ;;
+      *) printf 'mux: invalid MUX_BACKEND: %s (want tmux|cmux)\n' "$MUX_BACKEND" >&2; return "$ERR_USAGE" ;;
+    esac
+  fi
+  [[ -n "${TMUX:-}" ]]               && { printf 'tmux'; return 0; }
+  [[ -n "${CMUX_WORKSPACE_ID:-}" ]]  && { printf 'cmux'; return 0; }
+  return 1
+}
+
+# --- tmux backend helpers ---
+
+# Session of the calling pane (robust; does not drift with user focus).
+mux_tmux_caller_session() {
+  local s
+  s=$(tmux display-message -p -t "${TMUX_PANE:-}" '#{session_name}' 2>/dev/null) || return 1
+  [[ -n "$s" ]] && printf '%s' "$s"
+}
+
+# shellcheck disable=SC2329  # Consumed by mux_tmux_resolve_ws; verbs added in later tasks.
+# Session the attached client is viewing (may drift).
+mux_tmux_focused_session() {
+  local s
+  s=$(tmux display-message -p '#{client_session}' 2>/dev/null) || true
+  [[ -z "$s" ]] && s=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | head -1)
+  [[ -n "$s" ]] && printf '%s' "$s"
+}
+
+# Resolve a workspace selector to a concrete session name.
+# Accepts: caller | focused | sticky | <session-name>
+# sticky folds into caller (tmux has no launch-sticky concept). Default: caller.
+mux_tmux_resolve_ws() {
+  local sel=${1:-caller}
+  case "$sel" in
+    caller|sticky) mux_tmux_caller_session || notfound "could not resolve caller session" ;;
+    focused)       mux_tmux_focused_session || notfound "could not resolve focused session" ;;
+    *)
+      if tmux has-session -t "=$sel" 2>/dev/null; then
+        printf '%s' "$sel"
+      else
+        notfound "no tmux session named: $sel"
+      fi
+      ;;
+  esac
+}
+
+# shellcheck disable=SC2329  # Called by tmux verb implementations added in later tasks.
+# Resolve a --tab value (window id @N or window name) within a session to a
+# concrete "session:@id" target. Accepts a bare @id too.
+mux_tmux_resolve_tab() {
+  local sess=$1 tab=$2 wid
+  if [[ "$tab" == @* ]]; then
+    printf '%s:%s' "$sess" "$tab"; return 0
+  fi
+  wid=$(tmux list-windows -t "=$sess" -F '#{window_id} #{window_name}' 2>/dev/null \
+        | awk -v t="$tab" '$2 == t { print $1; exit }')
+  [[ -n "$wid" ]] || notfound "no window named '$tab' in session '$sess'"
+  printf '%s:%s' "$sess" "$wid"
+}
+
+cmd_send_tmux() {
+  local workspace='caller' tab='' cmd='' enter=1
+  while (( $# )); do
+    case "$1" in
+      --workspace) workspace=$2; shift 2 ;;
+      --tab)       tab=$2; shift 2 ;;
+      --cmd)       cmd=$2; shift 2 ;;
+      --no-enter)  enter=0; shift ;;
+      *) usage "send: unknown arg $1" ;;
+    esac
+  done
+  [[ -n "$tab" ]] || usage "send: --tab required"
+  local sess tgt
+  sess=$(mux_tmux_resolve_ws "$workspace")
+  tgt=$(mux_tmux_resolve_tab "$sess" "$tab")
+  # -l sends the text literally (no key interpretation); Enter is a separate event.
+  tmux send-keys -t "$tgt" -l "$cmd" || die "send: send-keys failed"
+  (( enter )) && { tmux send-keys -t "$tgt" Enter || die "send: Enter failed"; }
+}
+
+cmd_send_key_tmux() {
+  local workspace='caller' tab='' key=''
+  while (( $# )); do
+    case "$1" in
+      --workspace) workspace=$2; shift 2 ;;
+      --tab)       tab=$2; shift 2 ;;
+      --key)       key=$2; shift 2 ;;
+      *) usage "send-key: unknown arg $1" ;;
+    esac
+  done
+  [[ -n "$tab" && -n "$key" ]] || usage "send-key: --tab and --key required"
+  local sess tgt tkey
+  sess=$(mux_tmux_resolve_ws "$workspace")
+  tgt=$(mux_tmux_resolve_tab "$sess" "$tab")
+  tkey=$(mux_key_to_tmux "$key")
+  tmux send-keys -t "$tgt" "$tkey" || die "send-key: send-keys failed"
+}
+
+cmd_spawn_tmux() {
+  local workspace='caller' cwd='' cmd='' title='' focus=0 json=0
+  while (( $# )); do
+    case "$1" in
+      --workspace) workspace=$2; shift 2 ;;
+      --cwd)       cwd=$2; shift 2 ;;
+      --cmd)       cmd=$2; shift 2 ;;
+      --title)     title=$2; shift 2 ;;
+      --focus)     focus=1; shift ;;
+      --no-focus)  focus=0; shift ;;
+      --json)      json=1; shift ;;
+      *) usage "spawn: unknown arg $1" ;;
+    esac
+  done
+  local sess; sess=$(mux_tmux_resolve_ws "$workspace")
+  [[ -n "$cwd" ]] || cwd=$(tmux display-message -p -t "${TMUX_PANE:-}" '#{pane_current_path}' 2>/dev/null || printf '%s' "$HOME")
+
+  # Create the window running an interactive shell, NOT the command directly:
+  # tmux destroys a window when its process exits, so running the command AS the
+  # window process makes short commands vanish before their output can be read.
+  # Mirror cmux's create-then-send — spawn a shell, then send the command into
+  # it — so the window persists after the command finishes (and claude/REPLs land
+  # back at a live shell on exit). The -d holds the no-focus default: a bare
+  # new-window would SELECT the new window.
+  local args=(new-window -d -t "=${sess}:" -c "$cwd" -P -F '#{window_id}')
+  [[ -n "$title" ]] && args+=(-n "$title")
+  local wid
+  wid=$(tmux "${args[@]}") || die "spawn: tmux new-window failed"
+  [[ "$wid" == @* ]] || die "spawn: could not parse window id from: $wid"
+  if [[ -n "$cmd" ]]; then
+    tmux send-keys -t "=${sess}:${wid}" -l "$cmd" || die "spawn: send-keys failed"
+    tmux send-keys -t "=${sess}:${wid}" Enter || die "spawn: Enter (cmd) failed"
+  fi
+
+  if (( focus )); then
+    tmux select-window -t "=${sess}:${wid}" 2>/dev/null || true
+    tmux switch-client -t "=${sess}" 2>/dev/null || true   # best-effort; no-op if no client
+  fi
+
+  if (( json )); then
+    printf '{"workspace":"%s","tab":"%s","title":"%s"}\n' "$sess" "$wid" "$title"
+  else
+    printf '%s\n' "$wid"
+  fi
+}
+
+cmd_read_tmux() {
+  local workspace='caller' tab='' lines='' scrollback=0
+  while (( $# )); do
+    case "$1" in
+      --workspace) workspace=$2; shift 2 ;;
+      --tab)       tab=$2; shift 2 ;;
+      --lines)     lines=$2; shift 2 ;;
+      --scrollback) scrollback=1; shift ;;
+      *) usage "read: unknown arg $1" ;;
+    esac
+  done
+  [[ -n "$tab" ]] || usage "read: --tab required"
+  local sess tgt; sess=$(mux_tmux_resolve_ws "$workspace"); tgt=$(mux_tmux_resolve_tab "$sess" "$tab")
+  local cap=(capture-pane -p -t "$tgt")
+  if (( scrollback )); then
+    cap+=(-S -)
+  elif [[ -n "$lines" ]]; then
+    cap+=(-S "-$lines")
+  fi
+  tmux "${cap[@]}" || die "read: capture-pane failed"
+}
+
+cmd_wait_for_tmux() {
+  local workspace='caller' tab='' pattern='' interval=1 timeout=60
+  while (( $# )); do
+    case "$1" in
+      --workspace) workspace=$2; shift 2 ;;
+      --tab)       tab=$2; shift 2 ;;
+      --pattern)   pattern=$2; shift 2 ;;
+      --interval)  interval=$2; shift 2 ;;
+      --timeout)   timeout=$2; shift 2 ;;
+      *) usage "wait-for: unknown arg $1" ;;
+    esac
+  done
+  [[ -n "$tab" && -n "$pattern" ]] || usage "wait-for: --tab and --pattern required"
+  local sess tgt; sess=$(mux_tmux_resolve_ws "$workspace"); tgt=$(mux_tmux_resolve_tab "$sess" "$tab")
+  local elapsed=0
+  while (( elapsed < timeout )); do
+    if tmux capture-pane -p -t "$tgt" -S - 2>/dev/null | grep -qE "$pattern"; then
+      return 0
+    fi
+    sleep "$interval"; elapsed=$(( elapsed + interval ))
+  done
+  exit "$ERR_TIMEOUT"
+}
+
+cmd_settle_tmux() {
+  local workspace='caller' tab='' interval=1 budget=90 required_stable=2
+  while (( $# )); do
+    case "$1" in
+      --workspace) workspace=$2; shift 2 ;;
+      --tab)       tab=$2; shift 2 ;;
+      --interval)  interval=$2; shift 2 ;;
+      --budget)    budget=$2; shift 2 ;;
+      --required-stable) required_stable=$2; shift 2 ;;
+      *) usage "settle: unknown arg $1" ;;
+    esac
+  done
+  [[ -n "$tab" ]] || usage "settle: --tab required"
+  local sess tgt; sess=$(mux_tmux_resolve_ws "$workspace"); tgt=$(mux_tmux_resolve_tab "$sess" "$tab")
+  local prev='' cur stable=0 elapsed=0
+  while (( elapsed < budget )); do
+    cur=$(tmux capture-pane -p -t "$tgt" 2>/dev/null) || { printf '%s\n' "$cur"; exit "$ERR_GENERIC"; }
+    if [[ "$cur" == "$prev" ]]; then
+      stable=$(( stable + 1 ))
+      if (( stable >= required_stable )); then printf '%s\n' "$cur"; return 0; fi
+    else
+      stable=0
+    fi
+    prev=$cur; sleep "$interval"; elapsed=$(( elapsed + interval ))
+  done
+  printf '%s\n' "$cur"
+  exit "$ERR_TIMEOUT"
+}
+
+cmd_rename_tmux() {
+  local workspace='caller' tab='' title=''
+  while (( $# )); do case "$1" in
+    --workspace) workspace=$2; shift 2 ;; --tab) tab=$2; shift 2 ;; --title) title=$2; shift 2 ;;
+    *) usage "rename: unknown arg $1" ;; esac; done
+  [[ -n "$tab" && -n "$title" ]] || usage "rename: --tab and --title required"
+  local sess tgt; sess=$(mux_tmux_resolve_ws "$workspace"); tgt=$(mux_tmux_resolve_tab "$sess" "$tab")
+  tmux rename-window -t "$tgt" "$title" || die "rename: rename-window failed"
+}
+
+cmd_close_tmux() {
+  local workspace='caller' tab=''
+  while (( $# )); do case "$1" in
+    --workspace) workspace=$2; shift 2 ;; --tab) tab=$2; shift 2 ;;
+    *) usage "close: unknown arg $1" ;; esac; done
+  [[ -n "$tab" ]] || usage "close: --tab required"
+  local sess tgt; sess=$(mux_tmux_resolve_ws "$workspace"); tgt=$(mux_tmux_resolve_tab "$sess" "$tab")
+  tmux kill-window -t "$tgt" || die "close: kill-window failed"
+}
+
+cmd_focus_tmux() {
+  local workspace='caller' tab='' app=0
+  while (( $# )); do case "$1" in
+    --workspace) workspace=$2; shift 2 ;; --tab) tab=$2; shift 2 ;; --app) app=1; shift ;;
+    *) usage "focus: unknown arg $1" ;; esac; done
+  local sess; sess=$(mux_tmux_resolve_ws "$workspace")
+  if [[ -n "$tab" ]]; then
+    local tgt; tgt=$(mux_tmux_resolve_tab "$sess" "$tab")
+    tmux select-window -t "$tgt" 2>/dev/null || true
+  fi
+  tmux switch-client -t "=$sess" 2>/dev/null || true   # best-effort; no-op if no client
+  if (( app )); then open -a Ghostty 2>/dev/null || true; fi
+}
+
+cmd_new_workspace_tmux() {
+  local name='' cwd='' cmd=''
+  while (( $# )); do case "$1" in
+    --name) name=$2; shift 2 ;; --cwd) cwd=$2; shift 2 ;; --cmd) cmd=$2; shift 2 ;;
+    *) usage "new-workspace: unknown arg $1" ;; esac; done
+  [[ -n "$name" ]] || usage "new-workspace: --name required"
+  local args=(new-session -d -s "$name")
+  [[ -n "$cwd" ]] && args+=(-c "$cwd")
+  if [[ -n "$cmd" ]]; then tmux "${args[@]}" "$cmd" || die "new-workspace: new-session failed"
+  else tmux "${args[@]}" || die "new-workspace: new-session failed"; fi
+  printf '%s\n' "$name"
+}
+
+cmd_resolve_tmux() {
+  local kind=${1:-}; shift || true
+  case "$kind" in
+    workspace)
+      local name=${1:-}; [[ -n "$name" ]] || usage "resolve workspace: name required"
+      mux_tmux_resolve_ws "$name" && printf '\n'
+      ;;
+    tab)
+      local workspace='caller' title=''
+      while (( $# )); do case "$1" in
+        --workspace) workspace=$2; shift 2 ;; --title) title=$2; shift 2 ;;
+        *) usage "resolve tab: unknown arg $1" ;; esac; done
+      [[ -n "$title" ]] || usage "resolve tab: --title required"
+      local sess; sess=$(mux_tmux_resolve_ws "$workspace")
+      mux_tmux_resolve_tab "$sess" "$title" | sed 's/^[^:]*://'; printf '\n'
+      ;;
+    *) usage "resolve: want 'workspace <name>' or 'tab --workspace W --title T'" ;;
+  esac
+}
+
+cmd_list_tmux() {
+  local kind=${1:-}; shift || true
+  local json=0 workspace=''
+  while (( $# )); do case "$1" in
+    --json) json=1; shift ;; --workspace) workspace=$2; shift 2 ;;
+    *) usage "list: unknown arg $1" ;; esac; done
+  case "$kind" in
+    workspaces)
+      if (( json )); then tmux list-sessions -F '{"workspace":"#{session_name}","windows":#{session_windows}}' 2>/dev/null
+      else tmux list-sessions -F '#{session_name}  #{session_windows} windows' 2>/dev/null; fi
+      ;;
+    tabs)
+      [[ -n "$workspace" ]] || usage "list tabs: --workspace required"
+      local sess; sess=$(mux_tmux_resolve_ws "$workspace")
+      if (( json )); then tmux list-windows -t "=$sess" -F '{"tab":"#{window_id}","title":"#{window_name}"}' 2>/dev/null
+      else tmux list-windows -t "=$sess" -F '#{window_id}  #{window_name}' 2>/dev/null; fi
+      ;;
+    *) usage "list: want 'workspaces' or 'tabs --workspace W'" ;;
+  esac
+}
+
+cmd_status_tmux() {
+  local json=0
+  while (( $# )); do case "$1" in --json) json=1; shift ;; *) usage "status: unknown arg $1" ;; esac; done
+  tmux info >/dev/null 2>&1 || die "status: tmux server not responding"
+  local sess win
+  sess=$(mux_tmux_caller_session || true)
+  win=$(tmux display-message -p -t "${TMUX_PANE:-}" '#{window_id}' 2>/dev/null || true)
+  if (( json )); then
+    printf '{"backend":"tmux","workspace":"%s","tab":"%s"}\n' "$sess" "$win"
+  else
+    printf 'backend=tmux session=%s window=%s\n' "${sess:-?}" "${win:-?}"
+  fi
+}
+
+main() {
+  local backend
+  backend=$(mux_detect_backend) || die "not inside tmux or cmux (no \$TMUX or \$CMUX_WORKSPACE_ID; set MUX_BACKEND to force)"
+  if [[ "$backend" == "cmux" ]]; then
+    command -v cmx >/dev/null 2>&1 || die "cmux backend: cmx not found on PATH"
+    exec cmx "$@"
+  fi
+  # tmux backend dispatch added in later tasks.
+  local verb=${1:-}
+  [[ -n "$verb" ]] || usage "no verb (want: status spawn send send-key read wait-for settle close rename focus resolve list new-workspace)"
+  shift
+  case "$verb" in
+    status)   cmd_status_tmux "$@" ;;
+    spawn)    cmd_spawn_tmux "$@" ;;
+    send)     cmd_send_tmux "$@" ;;
+    send-key) cmd_send_key_tmux "$@" ;;
+    read)     cmd_read_tmux "$@" ;;
+    wait-for)      cmd_wait_for_tmux "$@" ;;
+    settle)        cmd_settle_tmux "$@" ;;
+    rename)        cmd_rename_tmux "$@" ;;
+    close)         cmd_close_tmux "$@" ;;
+    focus)         cmd_focus_tmux "$@" ;;
+    new-workspace) cmd_new_workspace_tmux "$@" ;;
+    resolve)       cmd_resolve_tmux "$@" ;;
+    list)          cmd_list_tmux "$@" ;;
+    *) die "tmux verb not yet implemented: $verb" ;;
+  esac
+}
+
+# Source guard: allow tests to source this file without running dispatch.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

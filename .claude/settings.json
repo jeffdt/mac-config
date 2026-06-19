@@ -1,0 +1,261 @@
+{
+  "env": {
+    "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD": "1",
+    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(. /Users/jeff.diteodoro/.claude/scripts/direnv-activate.sh)",
+      "Bash(bash ~/.claude/scripts/*)",
+      "Bash(bk build view:*)",
+      "Bash(bk job:*)",
+      "Bash(cat:*)",
+      "Bash(chub get:*)",
+      "Bash(chub search:*)",
+      "Bash(direnv allow:*)",
+      "Bash(docker info:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker ps:*)",
+      "Bash(echo:*)",
+      "Bash(find:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr checkout:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr status:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh search:*)",
+      "Bash(git add:*)",
+      "Bash(git diff:*)",
+      "Bash(git fetch:*)",
+      "Bash(git grep:*)",
+      "Bash(git log:*)",
+      "Bash(git push:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git show:*)",
+      "Bash(git stash:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(make test:*)",
+      "Bash(mux close:*)",
+      "Bash(mux focus:*)",
+      "Bash(mux list:*)",
+      "Bash(mux new-workspace:*)",
+      "Bash(mux read:*)",
+      "Bash(mux rename:*)",
+      "Bash(mux resolve:*)",
+      "Bash(mux send-key:*)",
+      "Bash(mux send:*)",
+      "Bash(mux settle:*)",
+      "Bash(mux spawn:*)",
+      "Bash(mux status:*)",
+      "Bash(mux wait-for:*)",
+      "Bash(node *codex-companion.mjs*)",
+      "Bash(npm test:*)",
+      "Bash(npx jest:*)",
+      "Bash(pbcopy)",
+      "Bash(pbcopy:*)",
+      "Bash(pip show:*)",
+      "Bash(pip3 show:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(rg:*)",
+      "Bash(yarn lint)",
+      "Bash(yarn lint:*)",
+      "Bash(yarn prettier:*)",
+      "Bash(~/.claude/scripts/get-pr-feedback.sh:*)",
+      "Read(~/Klaviyo/projects/mcp/**)",
+      "Skill(CLI:buildkite)",
+      "Skill(CLI:github)",
+      "Skill(CLI:linear)",
+      "Skill(handoff:debrief)",
+      "Skill(handoff:dispatch)",
+      "Skill(gc)",
+      "Skill(gcp)",
+      "Skill(gcpr)",
+      "Skill(pb)",
+      "Skill(pr:doctor)",
+      "Skill(pr:draft)",
+      "Skill(pr:feedback)",
+      "Skill(pr:hospital)",
+      "Skill(pr:readiness)",
+      "Skill(pr:review)",
+      "Skill(pr:simplify)",
+      "Skill(pr:temper)",
+      "Skill(pr:walkthrough)",
+      "Skill(project:capture)",
+      "Skill(project:init)",
+      "Skill(project:map)",
+      "Skill(project:plan)",
+      "Skill(research)",
+      "Skill(second-opinion)",
+      "Skill(ticket:capture)",
+      "Skill(ticket:find)",
+      "Skill(walkthrough)",
+      "WebFetch(domain:aws.amazon.com)",
+      "WebFetch(domain:code.claude.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:repost.aws)",
+      "WebSearch",
+      "mcp__braintrust__generate_permalink",
+      "mcp__braintrust__infer_schema",
+      "mcp__braintrust__list_recent_objects",
+      "mcp__braintrust__resolve_object",
+      "mcp__braintrust__search_docs",
+      "mcp__braintrust__sql_query",
+      "mcp__buildkite__get_build",
+      "mcp__buildkite__get_failed_executions",
+      "mcp__buildkite__get_jobs",
+      "mcp__buildkite__list_annotations",
+      "mcp__buildkite__list_builds",
+      "mcp__buildkite__read_logs",
+      "mcp__buildkite__search_logs",
+      "mcp__buildkite__tail_logs",
+      "mcp__claude_ai_Slack__slack_search_public_and_private",
+      "mcp__glean_default__chat",
+      "mcp__glean_default__read_document",
+      "mcp__glean_default__search",
+      "mcp__plugin_github_github__pull_request_read",
+      "mcp__plugin_linear_linear__get_document",
+      "mcp__plugin_linear_linear__get_issue",
+      "mcp__plugin_linear_linear__list_comments",
+      "mcp__plugin_linear_linear__list_issues",
+      "mcp__plugin_linear_linear__list_milestones",
+      "mcp__plugin_linear_linear__list_teams",
+      "mcp__plugin_linear_linear__list_users",
+      "mcp__plugin_slack_slack__slack_read_channel",
+      "mcp__plugin_slack_slack__slack_read_thread",
+      "mcp__plugin_slack_slack__slack_search_channels",
+      "mcp__plugin_slack_slack__slack_search_public",
+      "mcp__plugin_slack_slack__slack_search_public_and_private",
+      "mcp__plugin_slack_slack__slack_search_users"
+    ],
+    "deny": [],
+    "ask": [],
+    "defaultMode": "default",
+    "additionalDirectories": [
+      "~/r/eng-handbook",
+      "~/r/infrastructure-deployment",
+      "~/r/app",
+      "~/r/fender",
+      "~/r/k-repo",
+      "~/r/ami-build-and-cloud-init-scripts"
+    ]
+  },
+  "model": "opus[1m]",
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "afplay /System/Library/Sounds/Purr.aiff"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/scripts/backup-config.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ~/.claude/scripts/approve-compound-bash.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "afplay /System/Library/Sounds/Hero.aiff"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/jeff.diteodoro/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-track.sh'"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/jeff.diteodoro/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-cleanup.sh'"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.py"
+  },
+  "enabledPlugins": {
+    "CLI@klaviyo-plugins": true,
+    "code-simplifier@claude-plugins-official": true,
+    "codex@openai-codex": true,
+    "github@claude-plugins-official": true,
+    "kl-storytime@klaviyo-plugins": true,
+    "linear@claude-plugins-official": true,
+    "pagerduty@claude-plugins-official": false,
+    "permissions-audit@klaviyo-plugins": true,
+    "personal-voice@klaviyo-plugins": true,
+    "plugin-dev@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "sentry@claude-plugins-official": true,
+    "slack@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "chrome-devtools-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "ChromeDevTools/chrome-devtools-mcp"
+      }
+    },
+    "openai-codex": {
+      "source": {
+        "source": "github",
+        "repo": "openai/codex-plugin-cc"
+      }
+    }
+  },
+  "alwaysThinkingEnabled": true,
+  "effortLevel": "high",
+  "showClearContextOnPlanAccept": true,
+  "theme": "dark-ansi",
+  "preferredNotifChannel": "ghostty",
+  "skipAutoPermissionPrompt": true,
+  "voiceEnabled": true
+}

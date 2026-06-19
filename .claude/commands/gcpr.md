@@ -1,13 +1,18 @@
 ---
 description: Commit, push, and create a draft PR
-allowed-tools: SlashCommand:/gcp:*, SlashCommand:/pr:draft:*
+allowed-tools: SlashCommand:/ticket:find:*, SlashCommand:/gcp:*, SlashCommand:/pr:draft:*
 ---
 
-## Step 1: Collect ticket number
+Pre-computed context:
+- Skip ticket linking: `!test -f .claude/local/skip-ticket && echo "YES" || echo "NO"`
 
-Before doing anything else, ask the user: "What ticket is this work for? (e.g., AMPSS-123, or 'none')"
+## Step 1: Find the ticket
 
-Wait for the user's response. Store the ticket info for use in Step 3. Do NOT proceed until the user answers.
+**If skip ticket linking is "YES":** Skip this step entirely. No ticket will be linked.
+
+**Otherwise:** Use the SlashCommand tool to invoke /ticket:find with no arguments. This will auto-detect the relevant ticket from the branch name, commits, and conversation context.
+
+Wait for the user to confirm or select a ticket. Store the result for use in Step 3.
 
 ## Step 2: Commit and push
 
@@ -15,4 +20,4 @@ Use the SlashCommand tool to invoke /gcp.
 
 ## Step 3: Create draft PR
 
-Use the SlashCommand tool to invoke /pr:draft, passing the ticket identifier from Step 1 as the argument. Do not ask for the ticket again.
+Use the SlashCommand tool to invoke /pr:draft, passing the ticket identifier from Step 1 as the argument (or no argument if Step 1 was skipped). Do not ask for the ticket again.
