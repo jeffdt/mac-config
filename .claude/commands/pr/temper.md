@@ -44,7 +44,12 @@ Create `.claude/local/temper-manifests/` if it doesn't exist. If the manifest ha
 
 ### REVIEW
 
-Launch the `pr-review` agent via the Task tool with `subagent_type: "pr-review"`. Pass the PR number, pre-computed context, and temper manifest contents (if any).
+Run `/pr:review` for the PR number, which launches the `pr-review` orchestrator agent.
+
+Pass the temper manifest contents into the review instruction as prior cycle context. Tell the review flow:
+- Treat Fixed and Declined manifest entries as context, not automatic suppression.
+- If a current issue overlaps a prior manifest entry, still report it, but mention the prior decision so TRIAGE can classify it as Contested.
+- Return only the synthesized review report into the main conversation. Keep child reviewer artifacts in subagent output files and avoid pasting raw reviewer transcripts.
 
 → Go to **TRIAGE**
 
@@ -140,7 +145,7 @@ Run `/pr:simplify` as a finishing pass — naming, duplication, dead code, unnec
 
 ### FINAL_REVIEW
 
-Launch the `pr-review` agent one final time to confirm the simplify pass didn't break anything.
+Run `/pr:review` one final time to confirm the simplify pass didn't break anything. It launches the same `pr-review` orchestrator agent.
 
-- If clean → **DONE**. Write a brief passage (1-3 sentences) in the voice of literary fiction or genre fiction: an artisan, crafter, or creator admiring their finished work. Vary the craft wildly — a blacksmith, watchmaker, armorer, cartographer, luthier, glassblower, alchemist, wizard, shipwright, telescope-grinder, woodworker, chemist, perfumer, anything. Sci-fi and fantasy are both fair game. Evocative, sensory, a little overwrought. Different craft and tone every time. Do not reference git, PRs, code, or software — stay fully in the metaphor. Render the passage in italics inside a quote block. After the quote block, on its own line outside it, write: "And with that, the PR is tempered."
+- If clean → **DONE**. Write a brief passage (1-3 sentences) in the voice of literary fiction or genre fiction: an artisan, crafter, or creator admiring their finished work. Vary the craft wildly — a blacksmith, watchmaker, armorer, cartographer, luthier, glassblower, alchemist, wizard, shipwright, telescope-grinder, woodworker, chemist, perfumer, anything. Sci-fi and fantasy are both fair game. Evocative, sensory, a little overwrought. Different craft and tone every time. Do not reference git, PRs, code, or software — stay fully in the metaphor. Render the passage in italics inside a quote block. After the quote block, on its own line outside it, write: "And with that, the PR is tempered." Then, on the next line (plain text, not italic, outside the quote block), add this pointer: "Next: `/pr:rabbit` to catch what the CodeRabbit bot will flag, before you push."
 - If issues found → **STOP**. Alert the user and halt. The simplify pass should only make non-functional changes — if it introduced problems, that needs manual investigation. Do not loop back into fixes.

@@ -216,16 +216,17 @@ For each repo, derive a branch name following the `jeffdt/<domain>-<brief-kebab-
 
 **Before launching**, ask the user which agent CLI to use for implementation sessions, via `AskUserQuestion`. One global choice applies to all repos in this plan:
 
-- **claude** (default) — current behavior; sessions launch with `cat <prompt> | claude`.
+- **pi** (default) — sessions launch as an interactive `pi "$(cat <prompt>)"` seeded with the prompt, relying on pi's configured provider/model/thinking defaults. This is the standard path: claude handles orchestration and planning (this session), and the narrowly scoped per-repo implementation is delegated to pi.
+- **claude** — sessions launch with `cat <prompt> | claude`. Choose when the implementation work is itself complex or orchestration-heavy and benefits from staying on claude.
 - **codex** — experimental; sessions launch with `codex --full-auto "$(cat <prompt>)"`. Use for the Claude-plan / Codex-implement A/B test. `--full-auto` is `-a on-request --sandbox workspace-write`: Codex can still ask for approval, writes are sandboxed to the workspace.
 
-Pass the answer through to the launch script as `--cli claude|codex`.
+Pass the answer through to the launch script as `--cli claude|codex|pi`.
 
 Invoke `scripts/plan-launch-sessions.sh` (absolute path: `/Users/jeff.diteodoro/.claude/scripts/plan-launch-sessions.sh`), passing `<repo_path> <prompt_path> <branch> <subdir_relative>` 4-tuples (alphabetical by repo) as positional args. `<subdir_relative>` is the path relative to the repo root that the new session should `cd` into before launching the agent; derive it from the spec's `Target cwd` for that repo (`.` if the target cwd is the repo root itself):
 
 ```bash
 /Users/jeff.diteodoro/.claude/scripts/plan-launch-sessions.sh \
-  --cli <claude|codex> \
+  --cli <claude|codex|pi> \
   <abs-repo-1> <abs-prompt-1> <branch-1> <subdir-1> \
   <abs-repo-2> <abs-prompt-2> <branch-2> <subdir-2>
 ```
