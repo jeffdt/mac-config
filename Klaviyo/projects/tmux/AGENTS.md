@@ -16,4 +16,6 @@ Before making tmux recommendations, heavily ground the advice in Jeff's current 
 
 Once Jeff confirms the direction for a tmux config change, make the change directly in `~/.tmux.conf` rather than only telling him what to edit. Validate or reload the config when practical, and summarize the exact change made.
 
+When Jeff agrees to adding a tmux plugin managed by TPM, update `~/.tmux.conf`, run TPM's install script (`~/.tmux/plugins/tpm/bin/install_plugins`) when available, reload tmux, and summarize the installed plugin. If TPM is missing or the install fails, explain the blocker and ask for guidance.
+
 When a tmux configuration session appears complete, ask whether Jeff wants to back up the change to the dotfiles bare repo. The `config` git alias is a shell alias that expands to `/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME`; use it to inspect, stage, commit, and push dotfile changes such as `~/.tmux.conf`. Tested behavior: `config` is available in interactive zsh (`zsh -ic`) but is not available in non-interactive bash or non-interactive zsh (`bash -lc`, `zsh -c`, or the default bash tool shell). For automation, either run through interactive zsh or use the expanded command directly. Do not run the backup commit or push until Jeff confirms.

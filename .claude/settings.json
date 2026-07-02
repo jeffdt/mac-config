@@ -137,7 +137,7 @@
     ],
     "deny": [],
     "ask": [],
-    "defaultMode": "default",
+    "defaultMode": "auto",
     "additionalDirectories": [
       "~/r/eng-handbook",
       "~/r/infrastructure-deployment",
@@ -147,7 +147,7 @@
       "~/r/ami-build-and-cloud-init-scripts"
     ]
   },
-  "model": "opus[1m]",
+  "model": "sonnet",
   "hooks": {
     "Notification": [
       {
@@ -254,6 +254,7 @@
   "alwaysThinkingEnabled": true,
   "effortLevel": "high",
   "showClearContextOnPlanAccept": true,
+  "tui": "fullscreen",
   "theme": "dark-ansi",
   "preferredNotifChannel": "ghostty",
   "skipAutoPermissionPrompt": true,

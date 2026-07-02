@@ -44,23 +44,23 @@ If the user picks **Skip**, the review is complete. Stop here.
 
 If the user picks **Yes**, run the smoke test flow below.
 
-### Step 1 — Evaluate the PR's stated test plan
+### Step 1 - Evaluate the PR's stated test plan
 
-Re-read the PR description for any test plan section (commonly under headings like `## Test plan`, `## Testing`, `## How to test`). Output a brief assessment in conversation:
-- **Coverage:** Which of the PR's behaviors does the stated plan actually exercise?
-- **Gaps:** Use cases, edge cases, or regressions the plan misses, drawn from the review findings and the diff itself.
-- **Misleading or stale steps:** Anything that no longer applies, references removed code, or would pass even if the change were broken.
+Re-read the PR description for any test plan section. Output a brief assessment:
+- **Coverage:** Which behaviors the stated plan exercises.
+- **Gaps:** Use cases, edge cases, or regressions the plan misses.
+- **Misleading or stale steps:** Anything stale or would pass despite a broken change.
 
 If the PR has no test plan, say so and proceed to build one from scratch.
 
-### Step 2 — Build a smoke test plan
+### Step 2 - Build a smoke test plan
 
-Synthesize a focused plan that covers the golden path plus the gaps identified in Step 1. Keep it tight: aim for the smallest set of steps that exercises the PR's actual behavior changes and any high-risk edge cases. For each step, state:
-- What to do (command, URL, UI action, API call, etc.)
-- What to expect (the observable signal that proves the change works)
-- Why it matters (which behavior or risk it covers)
+Synthesize a focused plan covering the golden path plus gaps from Step 1. For each step, state:
+- What to do
+- What to expect
+- Why it matters
 
-Present the plan in conversation, then use AskUserQuestion:
+Present the plan, then use AskUserQuestion:
 - Question: "Run this smoke test plan?"
 - Header: "Run plan"
 - Options:
@@ -69,17 +69,17 @@ Present the plan in conversation, then use AskUserQuestion:
   - **Cancel** (description: "Skip smoke testing; the review is complete")
 - Free-text hint: "Describe edits to the plan"
 
-If the user picks **Adjust**, incorporate their edits and re-confirm before running. If **Cancel**, stop here.
+If **Adjust**, incorporate edits and re-confirm before running. If **Cancel**, stop.
 
-### Step 3 — Execute the plan
+### Step 3 - Execute the plan
 
-Walk through the steps with the user. For automatable steps (commands, file checks, etc.), run them directly. For manual steps (UI clicks, external systems), prompt the user and capture their reported result. After each step, record pass/fail and any unexpected output.
+Walk through the steps with the user. Run automatable steps directly. For manual steps, prompt the user and capture their reported result. After each step, record pass/fail and unexpected output.
 
-### Step 4 — Summarize smoke test results
+### Step 4 - Summarize smoke test results
 
-Output a concise summary in conversation:
+Output:
 - Steps run, passed, failed
-- Any failures with the observed vs. expected behavior
-- New issues that emerged, tied back to the review findings where relevant (reference finding IDs like `C1`, `I2` if they relate)
+- Any failures with observed vs. expected behavior
+- New issues tied back to review findings where relevant
 
-If failures surfaced new issues, note whether they change the review verdict (e.g., an `Approved` PR that now warrants `Needs Changes`). The user decides; this is just an informed signal.
+If failures surfaced new issues, note whether they change the review verdict. The user decides.

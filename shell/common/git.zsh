@@ -42,6 +42,19 @@ function gpx() {
     git status
 }
 
+# Debug log for the PR launcher flow (prr/prw/prf/prd). Tentacle-spawned tmux
+# windows run the launcher and then `exec` the chosen CLI (claude for prr/prw;
+# claude or pi for prd/prf); if anything before the handoff fails or the CLI
+# exits immediately, the window can vanish before its output can be read. This
+# file records how far slot prep got and whether the exec handoff was reached.
+# It lives under $TMPDIR (macOS purges it, so it never grows unbounded across
+# reboots); override with $PR_LAUNCHER_LOG. Tail it while reproducing:
+#   tail -F "${TMPDIR:-/tmp}/pr-launcher.log"
+_PR_LOG_FILE="${PR_LAUNCHER_LOG:-${TMPDIR:-/tmp}/pr-launcher.log}"
+_pr_log() {
+    print -r -- "$(date '+%Y-%m-%d %H:%M:%S') [pid $$] ${funcstack[2]:-?}: $*" >> "$_PR_LOG_FILE" 2>/dev/null
+}
+
 _prr_parse_url() {
     local input="$1"
     if [[ "$input" =~ ^https://github\.com/([^/]+)/([^/]+)/pull/([0-9]+)([/?#].*)?$ ]]; then
@@ -79,6 +92,7 @@ _pr_locate_repo_error() {
 _pr_prepare_slot() {
     local caller="${funcstack[2]:-pr-launcher}"
     local input="${1:-}"
+    _pr_log "ENTER input='${input}' cwd='$PWD'"
 
     if [[ "$input" == "-h" || "$input" == "--help" ]]; then
         cat >&2 <<EOF
@@ -119,22 +133,28 @@ EOF
     fi
     local org repo number
     read -r org repo number <<< "$parsed"
+    _pr_log "parsed org='$org' repo='$repo' number='$number'"
 
     local repo_path
     if ! repo_path="$(_pr_locate_repo "$repo")"; then
+        _pr_log "FAIL repo not found: '$repo' (PR_REPO_BASE_DIRS='${PR_REPO_BASE_DIRS:-<unset>}')"
         _pr_locate_repo_error "$caller" "$repo"
         return 1
     fi
     # Slots are keyed on PR number so multiple reviews on the same repo can
     # run in parallel. Re-running on the same PR reuses its existing slot.
     local slot_path="${repo_path}.pr-review-${number}"
+    _pr_log "repo_path='$repo_path' slot_path='$slot_path' slot_exists=$([[ -d "$slot_path" ]] && echo yes || echo no)"
 
     if [[ ! -d "$slot_path" ]]; then
-        git -C "$repo_path" fetch origin >/dev/null || return 1
-        git -C "$repo_path" worktree add --detach "$slot_path" origin/HEAD || return 1
+        _pr_log "fetch origin in '$repo_path'"
+        git -C "$repo_path" fetch origin >/dev/null || { _pr_log "FAIL fetch rc=$?"; return 1; }
+        _pr_log "worktree add --detach '$slot_path' origin/HEAD"
+        git -C "$repo_path" worktree add --detach "$slot_path" origin/HEAD || { _pr_log "FAIL worktree add rc=$?"; return 1; }
     fi
 
     if ! git -C "$slot_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        _pr_log "FAIL slot exists but not a worktree: '$slot_path'"
         echo "$caller: $slot_path exists but is not a git worktree. Remove it and retry." >&2
         return 1
     fi
@@ -142,34 +162,74 @@ EOF
     local current_branch expected_branch
     current_branch="$(git -C "$slot_path" branch --show-current 2>/dev/null)"
     expected_branch="$(gh pr view "$number" --json headRefName -q .headRefName --repo "$org/$repo" 2>/dev/null)"
+    _pr_log "current_branch='$current_branch' expected_branch='$expected_branch'"
 
     if [[ -n "$current_branch" && "$current_branch" == "$expected_branch" ]]; then
-        cd "$slot_path" || { echo "$caller: could not cd into $slot_path" >&2; return 1; }
+        _pr_log "branch already checked out; cd into slot (direnv fires here)"
+        cd "$slot_path" || { _pr_log "FAIL cd rc=$?"; echo "$caller: could not cd into $slot_path" >&2; return 1; }
+        _pr_log "RETURN 0 (reused slot) cwd='$PWD'"
         return 0
     fi
 
-    cd "$slot_path" || return 1
-    git reset --hard >/dev/null || return 1
-    git clean -fd >/dev/null || return 1
-    git fetch origin || return 1
-    gh pr checkout "$number" || return 1
+    _pr_log "cd into slot (direnv fires here)"
+    cd "$slot_path" || { _pr_log "FAIL cd rc=$?"; return 1; }
+    _pr_log "git reset --hard"
+    git reset --hard >/dev/null || { _pr_log "FAIL reset rc=$?"; return 1; }
+    _pr_log "git clean -fd"
+    git clean -fd >/dev/null || { _pr_log "FAIL clean rc=$?"; return 1; }
+    _pr_log "git fetch origin"
+    git fetch origin || { _pr_log "FAIL fetch rc=$?"; return 1; }
+    _pr_log "gh pr checkout $number"
+    gh pr checkout "$number" || { _pr_log "FAIL gh pr checkout rc=$?"; return 1; }
+    _pr_log "RETURN 0 (checked out) cwd='$PWD'"
 }
 
-prr() { _pr_prepare_slot "$@" && exec pi "/pr:review"; }
-prw() { _pr_prepare_slot "$@" && exec pi "/pr:walkthrough"; }
+# Run slot prep, then hand off to claude. /pr:review and /pr:walkthrough are
+# structured, multi-subagent workflows that Claude coordinates (the review
+# orchestrator delegates to Codex for model diversity), so prr/prw are pinned
+# to claude with no engine choice. Logging is split out so the launcher log
+# shows the prep result and whether the `exec claude` handoff was reached, even
+# if claude itself exits immediately afterward and takes the tmux window down.
+_pr_launch() {
+    local prompt="$1"; shift
+    _pr_prepare_slot "$@"
+    local rc=$?
+    _pr_log "_pr_prepare_slot rc=$rc; $([[ $rc -eq 0 ]] && echo "exec claude ${prompt%%$'\n'*}" || echo "NOT exec'ing claude") cwd='$PWD'"
+    (( rc == 0 )) && exec claude "$prompt"
+    return $rc
+}
+prr() { _pr_launch "/pr:review" "$@"; }
+prw() { _pr_launch "/pr:walkthrough" "$@"; }
 
-# Open a fresh pi session on a PR with a user-typed opening instruction
-# (the "Discuss…" mode from the Tentacle dropdown). Uses the feedback-style
-# slot prep so discuss-mode on your own open PR reuses your existing
-# feature worktree rather than failing to check the branch out twice; for
-# others' PRs it falls back to a per-PR review slot.
+# Resolve an optional leading engine flag for the selectable launchers (prd/prf)
+# into the CLI to exec. Defaults to claude. `--gpt`/`--pi` route to pi (GPT);
+# `--claude` is the explicit default. Sets the `engine` and `nshift` locals in
+# the caller's scope (nshift = how many args to shift off the flag).
+_pr_engine() {
+    engine=claude
+    nshift=0
+    case "$1" in
+        --gpt|--pi) engine=pi;     nshift=1 ;;
+        --claude)   engine=claude; nshift=1 ;;
+    esac
+}
+
+# Open a fresh session on a PR with a user-typed opening instruction (the
+# "Discuss…" mode from the Tentacle dropdown). The engine is selectable because
+# a discuss can be anything from a narrow technical question to a broad
+# architectural debate; defaults to claude, `--gpt`/`--pi` routes to GPT via pi.
+# Uses the feedback-style slot prep so discuss-mode on your own open PR reuses
+# your existing feature worktree rather than failing to check the branch out
+# twice; for others' PRs it falls back to a per-PR review slot.
 prd() {
+    local engine nshift
+    _pr_engine "$1"; shift $nshift
     local url="$1" prompt="$2"
     if [[ -z "$url" || -z "$prompt" ]]; then
-        echo "prd: usage: prd <pr-url> <prompt>" >&2
+        echo "prd: usage: prd [--claude|--gpt] <pr-url> <prompt>" >&2
         return 1
     fi
-    _pr_feedback_prepare "$url" && exec pi "$prompt"
+    _pr_feedback_prepare "$url" && exec "$engine" "$prompt"
 }
 
 # Unlike prr/prw, /pr:feedback is usually run against your OWN open PR, so the
@@ -252,4 +312,10 @@ EOF
     _pr_prepare_slot "$1"
 }
 
-prf() { _pr_feedback_prepare "$@" && exec pi $'/pr:feedback\n\nScope: address only unresolved review threads. Ignore threads that are already resolved.'; }
+# Engine-selectable like prd (default claude, `--gpt`/`--pi` for GPT): addressing
+# review threads is usually mechanical, but a thread can turn into a design call.
+prf() {
+    local engine nshift
+    _pr_engine "$1"; shift $nshift
+    _pr_feedback_prepare "$@" && exec "$engine" $'/pr:feedback\n\nScope: address only unresolved review threads. Ignore threads that are already resolved.'
+}
