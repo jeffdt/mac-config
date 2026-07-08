@@ -147,7 +147,6 @@
       "~/r/ami-build-and-cloud-init-scripts"
     ]
   },
-  "model": "sonnet",
   "hooks": {
     "Notification": [
       {
@@ -178,6 +177,12 @@
             "type": "command",
             "command": "node ~/.claude/scripts/approve-compound-bash.js",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "if": "Bash(tmux *)",
+            "command": "bash ~/.claude/scripts/tmux-mux-nudge.sh",
+            "timeout": 5
           }
         ]
       }
@@ -199,7 +204,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/Users/jeff.diteodoro/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-track.sh'"
+            "command": "bash '/Users/hom/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-track.sh'"
           }
         ]
       }
@@ -210,7 +215,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/Users/jeff.diteodoro/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-cleanup.sh'"
+            "command": "bash '/Users/hom/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-cleanup.sh'"
           }
         ]
       }
@@ -258,5 +263,6 @@
   "theme": "dark-ansi",
   "preferredNotifChannel": "ghostty",
   "skipAutoPermissionPrompt": true,
-  "voiceEnabled": true
+  "voiceEnabled": true,
+  "agentPushNotifEnabled": true
 }
