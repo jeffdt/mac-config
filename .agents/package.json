@@ -1,0 +1,13 @@
+{
+  "name": "jeff-agent-resources",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node ./bin/publish.mjs --check",
+    "publish": "node ./bin/publish.mjs",
+    "publish:dry-run": "node ./bin/publish.mjs --dry-run"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  }
+}

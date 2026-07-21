@@ -68,6 +68,8 @@ Based on the user interview, fill in these components:
 - **compatibility**: Required tools, dependencies (optional, rarely needed)
 - **the rest of the skill :)**
 
+Use double-quoted YAML scalars for freeform frontmatter values, especially `description`, and escape embedded double quotes as `\"`. This prevents prose such as `Use when: ...` from being parsed as a nested mapping by Pi.
+
 ### Skill Writing Guide
 
 #### Anatomy of a Skill

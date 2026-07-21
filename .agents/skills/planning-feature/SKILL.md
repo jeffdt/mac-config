@@ -222,10 +222,10 @@ For each repo, derive a branch name following the `jeffdt/<domain>-<brief-kebab-
 
 Pass the answer through to the launch script as `--cli claude|codex|pi`.
 
-Invoke `scripts/plan-launch-sessions.sh` (absolute path: `/Users/jeff.diteodoro/.claude/scripts/plan-launch-sessions.sh`), passing `<repo_path> <prompt_path> <branch> <subdir_relative>` 4-tuples (alphabetical by repo) as positional args. `<subdir_relative>` is the path relative to the repo root that the new session should `cd` into before launching the agent; derive it from the spec's `Target cwd` for that repo (`.` if the target cwd is the repo root itself):
+Invoke `scripts/plan-launch-sessions.sh` (absolute path: `/Users/jeff.diteodoro/.agents/scripts/plan-launch-sessions.sh`), passing `<repo_path> <prompt_path> <branch> <subdir_relative>` 4-tuples (alphabetical by repo) as positional args. `<subdir_relative>` is the path relative to the repo root that the new session should `cd` into before launching the agent; derive it from the spec's `Target cwd` for that repo (`.` if the target cwd is the repo root itself):
 
 ```bash
-/Users/jeff.diteodoro/.claude/scripts/plan-launch-sessions.sh \
+/Users/jeff.diteodoro/.agents/scripts/plan-launch-sessions.sh \
   --cli <claude|codex|pi> \
   <abs-repo-1> <abs-prompt-1> <branch-1> <subdir-1> \
   <abs-repo-2> <abs-prompt-2> <branch-2> <subdir-2>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jeff.agents-publish</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jeff.diteodoro/.agents/bin/publish-wrapper.sh</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>WatchPaths</key>
+  <array>
+    <string>/Users/jeff.diteodoro/.agents/skills</string>
+    <string>/Users/jeff.diteodoro/.agents/agents</string>
+    <string>/Users/jeff.diteodoro/.agents/agent-prompts</string>
+    <string>/Users/jeff.diteodoro/.agents/scripts</string>
+  </array>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/jeff.diteodoro/.agents/.publish.launchd.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/jeff.diteodoro/.agents/.publish.launchd.err</string>
+</dict>
+</plist>

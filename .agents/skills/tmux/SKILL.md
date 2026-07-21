@@ -31,7 +31,7 @@ interface across tmux and cmux. Drop to raw `tmux` only when `mux` lacks a recip
 
 ## Prefer `mux`
 
-`mux` (`~/.claude/scripts/mux`, symlinked from `~/.local/bin/mux`) is the
+`mux` (`~/.agents/scripts/mux`, symlinked from `~/.local/bin/mux`) is the
 allowlist-friendly wrapper. It detects the backend (`$TMUX` -> tmux; else cmux)
 and exposes one verb interface, so `Bash(mux <verb>:*)` can be allowlisted.
 

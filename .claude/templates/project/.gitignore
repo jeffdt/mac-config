@@ -10,6 +10,7 @@ drafts/
 !.gitignore
 !README.md
 !CLAUDE.md
+!AGENTS.md
 !.claude/
 !.claude/settings.json
 # settings.local.json is personal (overrides settings.json) and stays ignored
@@ -31,3 +32,7 @@ drafts/
 
 # Track loose reference docs at root
 !*.md
+
+# Personal local overrides stay ignored even though *.md is tracked above
+CLAUDE.local.md
+AGENTS.local.md

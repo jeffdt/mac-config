@@ -20,7 +20,7 @@
 // For all other cases: add a SITE_PARSERS + DISPATCH entry in tentacle.lua instead
 // (see examples/handler-template.lua).
 //
-// Source of truth lives in ~/.claude/scripts/userscripts/<<TODO: filename>>.
+// Source of truth lives in ~/.agents/scripts/userscripts/<<TODO: filename>>.
 // Paste into Tampermonkey separately to install/update.
 // The URL this emits must match hammerspoon://tentacle?site=<s>&url=<u>&mode=<m>
 // to be handled by tentacle.lua.

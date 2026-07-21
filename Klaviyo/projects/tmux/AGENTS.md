@@ -12,7 +12,7 @@ It is the home for:
 
 When making changes here, prefer clear, practical configuration that supports day-to-day use. Keep notes useful for future reference, especially when documenting shortcuts, workflow patterns, or lessons learned.
 
-Before making tmux recommendations, heavily ground the advice in Jeff's current `~/.tmux.conf`. Check the active config first so suggestions fit the existing setup, bindings, plugins, and style choices instead of relying on generic tmux defaults.
+Before making tmux recommendations or configuration changes, start by reading Jeff's current `~/.tmux.conf` so suggestions fit the existing setup, bindings, plugins, and style choices instead of relying on generic tmux defaults. If the task involves keybindings, prefix behavior, copy mode, pane or window navigation, or unexpected key behavior, also inspect active tmux bindings with targeted `tmux list-keys` calls for the relevant key tables. Do not rely on generic tmux defaults when Jeff's config or active tmux state could affect the answer.
 
 Once Jeff confirms the direction for a tmux config change, make the change directly in `~/.tmux.conf` rather than only telling him what to edit. Validate or reload the config when practical, and summarize the exact change made.
 

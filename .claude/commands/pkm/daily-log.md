@@ -18,9 +18,9 @@ Supports:
 
 Parse `$ARGUMENTS` to determine if this is a single date or a date range.
 
-**Range indicators**: "to", "-", "through", ".."
+**Range indicators**: "to", "through", "..", or a compact slash-date range like `12/18-12/23`. Do not treat hyphens inside ISO dates (`YYYY-MM-DD`) as range separators.
 
-**If a date range is detected, use the hub-and-spoke pattern below (4 phases). Subagents cannot get interactive permission approval for Bash/Write tools, so the parent handles ALL privileged operations and subagents handle MCP queries (Slack, Linear, Glean) + synthesis.**
+**If a date range is detected, use the hub-and-spoke pattern below (4 phases). For arguments like `2025-12-18 to 2025-12-23`, this is mandatory. Subagents cannot get interactive permission approval for Bash/Write tools, so the parent handles ALL privileged operations and subagents handle MCP queries (Slack, Linear, Glean) + synthesis.**
 
 ### Phase 1: Setup (parent)
 1. Parse start and end dates, generate list of workdays (exclude weekends)
@@ -71,7 +71,10 @@ For each date, spawn a background subagent (Task tool, `run_in_background: true`
    - Filename format: `YY-MM-DD (Day).md` (e.g., `25-12-22 (Mon).md`)
 3. Identify any **gap in workdays** between the last valid entry and target date
    - Exclude weekends (Sat/Sun) from gap calculation
-   - If gaps exist, **ask the user**: "I found your last log was [date]. Would you like me to also create entries for [missing workdays]?"
+   - If this command was given a date range, do not ask about gaps; Step 0 already approved generating every workday in that range.
+   - If this command was given a single explicit date, note any gap but continue with that requested date. Do not stop to ask unless the user explicitly asked for interactive gap handling.
+   - If no date argument was provided and gaps exist, **ask the user**: "I found your last log was [date]. Would you like me to also create entries for [missing workdays]?"
+   - In headless or automation contexts, never ask follow-up questions; proceed according to the explicit argument.
 4. **Read the previous entry** to identify content that should NOT be duplicated in today's entry
 
 ---

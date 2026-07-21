@@ -18,9 +18,9 @@ Reference for automating cmux from the shell. cmux is a terminal multiplexer wit
 
 ## Prefer `cmx` for common recipes
 
-`cmx` (`~/.claude/scripts/cmx`, symlinked from `~/.local/bin/cmx`) is a single-subprocess wrapper around the recipes below. Each verb runs as one bash invocation, so the user can allowlist `Bash(cmx <verb>:*)` and skip the per-call permission prompt. **Use `cmx` for routine automation; drop down to raw `cmux` only when a recipe isn't covered.**
+`cmx` (`~/.agents/scripts/cmx`, symlinked from `~/.local/bin/cmx`) is a single-subprocess wrapper around the recipes below. Each verb runs as one bash invocation, so the user can allowlist `Bash(cmx <verb>:*)` and skip the per-call permission prompt. **Use `cmx` for routine automation; drop down to raw `cmux` only when a recipe isn't covered.**
 
-> **Unified front door:** `mux` (`~/.claude/scripts/mux`) now fronts both tmux and
+> **Unified front door:** `mux` (`~/.agents/scripts/mux`) now fronts both tmux and
 > cmux with this same verb interface. On a cmux machine, `mux <verb>` simply
 > `exec`s `cmx <verb>` unchanged — so callers can target `mux` and the cmux path
 > is identical to calling `cmx` directly. See the `tmux` skill for the tmux side.

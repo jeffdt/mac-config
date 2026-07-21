@@ -1,0 +1,11 @@
+.publish-manifest.json
+.publish.launchd.err
+.publish.launchd.log
+.publish.lock/
+.skill-lock.json
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+.DS_Store
+/specs/
+/plans/

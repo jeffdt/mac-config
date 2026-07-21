@@ -1,12 +1,18 @@
 ---
 description: Summarize session outcomes for the orchestrating session
-allowed-tools: Bash(echo:*), Bash(pbcopy:*)
-argument-hint: [hint]
+allowed-tools: Bash(echo:*), Bash(pbcopy:*), Bash(mux:*)
+argument-hint: [--target <window>|<session:window>] [hint]
 ---
 
 Summarize what happened in this session as a debrief for the orchestrating/planning session that dispatched this work. The output is pasted into a still-open planning session that already has full prior context, so this is a delta report, not a standalone prompt.
 
-**Hint**: $ARGUMENTS
+**Arguments**: $ARGUMENTS
+
+If `$ARGUMENTS` begins with `--target <spec>`, extract `<spec>` and treat everything after it as the hint. `<spec>` is `[SESSION:]WINDOW`:
+- Bare `WINDOW` — a window in the caller's own tmux session (`mux`'s `caller` workspace).
+- `SESSION:WINDOW` — a window in another session.
+
+If no `--target` is present, treat all of `$ARGUMENTS` as the hint (today's behavior, unchanged).
 
 ## Pre-computed context
 
@@ -50,8 +56,18 @@ The debrief should be terse. The planning session will ask follow-up questions i
 
 ## Using the hint
 
-If `$ARGUMENTS` is provided, use it to guide focus. The hint might emphasize a specific aspect of the work (e.g., "focus on the contract changes", "what happened with the migration"). If no hint is provided, cover whatever is most important.
+If a hint is present (the text after `--target <spec>`, or all of `$ARGUMENTS` if there's no `--target`), use it to guide focus. The hint might emphasize a specific aspect of the work (e.g., "focus on the contract changes", "what happened with the migration"). If no hint is provided, cover whatever is most important.
 
 ## Output
 
-Do not use the Write tool or save to a file. Pipe the debrief as plain text (no markdown code fences wrapping the whole thing) to `pbcopy` via a Bash heredoc. The piped text must lead with the fixed framing line above, a blank line, then the sections. Confirm to the user with a brief message: what the debrief covers and its status.
+The debrief is plain text (no markdown code fences wrapping the whole thing), leading with the fixed framing line above, a blank line, then the sections. Do not use the Write tool or save it to a file.
+
+**No `--target`:** pipe the debrief to `pbcopy` via a Bash heredoc, exactly as before. Confirm to the user with a brief message: what the debrief covers and its status.
+
+**With `--target <spec>`:** before delivering, resolve the target and judge whether it's safe to auto-submit into:
+
+1. Split `<spec>` on `:`. No colon → `--workspace caller --tab <spec>`. Colon present → `--workspace <session> --tab <window>`.
+2. Run `mux read --workspace <ws> --tab <tab> --lines 60` to capture the target pane's current screen. If this fails (exit 3, window/session not found), fall back to `pbcopy` and tell the user: `Target '<spec>' not found — copied to clipboard instead.`
+3. Look at the captured screen and judge: does this look like an active Claude Code or pi session sitting at its input composer, ready for a new freeform prompt? This is a judgment call you make by reading the content — not a fixed pattern to match. A bare shell prompt, an editor, a permission dialog, or an `AskUserQuestion`-style picker are all "not ready." A composer that's mid-turn but not blocked on a dialog is "ready" — the message will queue.
+4. If it looks ready, pipe the debrief text into `mux paste --workspace <ws> --tab <tab> --enter` (same heredoc pattern used for `pbcopy`, piped to `mux` instead). If this command fails, fall back to `pbcopy` and tell the user: `Target '<spec>' paste failed — copied to clipboard instead.` Otherwise, confirm to the user with a brief message: what the debrief covers, its status, and that it was delivered to `<spec>`.
+5. If it does NOT look ready, fall back to `pbcopy` and tell the user: `Target '<spec>' doesn't look like an idle Claude/pi composer (looks like <brief description>) — copied to clipboard instead.`

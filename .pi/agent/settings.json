@@ -1,0 +1,25 @@
+{
+  "lastChangelogVersion": "0.81.0",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.6-terra",
+  "defaultThinkingLevel": "xhigh",
+  "enableSkillCommands": true,
+  "packages": [
+    "npm:context-mode",
+    "npm:pi-subagents",
+    "npm:pi-web-access",
+    "npm:pi-btw",
+    "npm:pi-cursor-sdk",
+    "../../Klaviyo/projects/pi/pi-quiet-mcp",
+    "npm:pi-intercom",
+    "npm:pi-prompt-template-model"
+  ],
+  "hideThinkingBlock": true,
+  "theme": "jeff-nord-syntax",
+  "collapseChangelog": true,
+  "doubleEscapeAction": "tree",
+  "treeFilterMode": "user-only",
+  "warnings": {
+    "anthropicExtraUsage": false
+  }
+}

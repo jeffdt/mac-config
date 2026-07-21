@@ -59,7 +59,7 @@ These are guidelines, not hard rules. Use judgment — a 30-line auth change may
 
 **Step 5 — Read Reviewer Prompts**
 
-Read all 3 reviewer prompt files from `agent-prompts/pr-review/`:
+Read all 3 reviewer prompt files from `/Users/jeff.diteodoro/.agents/agent-prompts/pr-review/`:
 - `meta.md`
 - `code-quality.md`
 - `security-and-performance.md`

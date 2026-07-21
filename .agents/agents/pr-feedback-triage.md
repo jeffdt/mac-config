@@ -26,7 +26,7 @@ Determine the repository owner and name from `gh repo view --json owner,name` (o
 Run the unified fetch script:
 
 ```bash
-~/.claude/scripts/get-pr-feedback.sh <owner> <repo> <pr_number>
+~/.agents/scripts/get-pr-feedback.sh <owner> <repo> <pr_number>
 ```
 
 This returns one JSON object with:

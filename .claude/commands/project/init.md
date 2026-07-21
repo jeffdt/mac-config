@@ -27,42 +27,23 @@ Check if `~/Klaviyo/projects/<PROJECT_NAME>/` already exists. If so, warn and as
 
 ## Step 2: Select Repositories
 
-List available repos, deduping git worktrees:
-```bash
-find -L ~/r -maxdepth 2 -name .git -type d -exec dirname {} \; | xargs -n1 basename | sort
-```
+Present this fixed shortlist as plain text, not `AskUserQuestion`: the list can grow past its 4-option cap, and this list is meant to stay short and stable rather than mirror everything under `~/Klaviyo/Repos`.
 
-This lists only primary checkouts. Worktrees (sibling `<repo>.<suffix>` dirs created by `wt` or the pr-review agent, e.g. `app.pr-review`, `k-repo.jeffdt-csa-search-prompt-fixes`) share their parent repo's working tree, so a plain `ls ~/r/` would list each one as a separate repo. A worktree's `.git` is a *file* (it points back to the main repo's `.git/worktrees/...`), while a primary checkout's `.git` is a *directory*, so `-type d` selects only the canonical checkouts. The `-L` is required because `~/r` is a symlink. If two selectable entries would still collide, prefer the bare repo name.
-
-Present the list as a numbered multi-select via `AskUserQuestion`. Pre-check `eng-handbook`. Format like:
-
-> Which repos should this project have access to? (comma-separated numbers)
+> Which repos should this project have access to? Reply with comma-separated numbers, plus any additional repo names by hand.
 >
-> 1. [x] eng-handbook
-> 2. [ ] repo-a
-> 3. [ ] repo-b
-> ...
+> 1. eng-handbook
+> 2. fender
+> 3. app
+> 4. k-repo
+> 5. infrastructure-deployment
 
-Collect the selected repo names.
+Collect the selected repos plus any freeform additions into `REPO_LIST`. Freeform entries should name a primary checkout (e.g. `k-ops-jarvis`), not a worktree sibling like `app.pr-review`: worktrees share their parent repo's working tree, so the primary checkout already covers them.
+
+Use `~/Klaviyo/Repos/<repo>` as the canonical path in all generated files. (`~/r` is a legacy symlink to the same directory; don't write it into scaffolded output.)
 
 ---
 
-## Step 3: Select Permissions
-
-Ask via `AskUserQuestion` with a checklist of common permissions. Pre-check `Bash(mdfind:*)` and `Bash(pbcopy:*)`:
-
-> Which additional permissions? (comma-separated numbers)
->
-> 1. [x] Bash(mdfind:*)
-> 2. [x] Bash(pbcopy:*)
-> 3. [ ] WebFetch(domain:*)
-> 4. [ ] Bash(cat:*)
-
-Collect the selected permissions.
-
----
-
-## Step 4: Relevant Slack Channels
+## Step 3: Relevant Slack Channels
 
 Ask via `AskUserQuestion` which Slack channels this project should treat as its defaults. At Klaviyo nearly every project has a dedicated `#proj-*` channel, so expect a project channel; still allow any field to be left blank.
 
@@ -70,11 +51,25 @@ Capture a handle and a short purpose for each of:
 
 - **Team:** the squad/team discussion channel (e.g. `#ampss-eng`)
 - **Project:** this project's dedicated channel, usually `#proj-<name>`
-- **Other:** any additional relevant channels (incidents, stakeholders, or headless-run output, which defaults to `#jeffdt-automations` per global convention)
+- **Other:** any additional relevant channel (incidents, stakeholders, etc.)
 
-Do **not** resolve channel IDs now: that would require a Slack lookup at scaffold time and a Slack MCP dependency. IDs are backfilled lazily, the first time a Slack command needs one (resolve the handle, then write the ID back into `CLAUDE.md`).
+None of these have a default value: if the user leaves a field blank, omit it. Don't infer or suggest a specific channel unless the user names one.
+
+Do **not** resolve channel IDs now: that would require a Slack lookup at scaffold time and a Slack MCP dependency. IDs are backfilled lazily, the first time a Slack command needs one (resolve the handle, then write the ID back into `AGENTS.md`).
 
 Set `PROJECT_CHANNELS` from the response.
+
+---
+
+## Step 4: Project MCP Servers (optional)
+
+Most MCP servers the user needs are already configured globally. This step is only for servers specific to *this project's* domain that should be shared with anyone who opens it, so keep it skippable and default to none.
+
+Ask via `AskUserQuestion` (or plain text if the candidate list grows past 4):
+
+> Does this project need any project-specific MCP servers in a shared `.mcp.json`? Common candidates based on typical stacks: Braintrust (evals), Chronosphere (observability), Buildkite (CI), Linear (issue tracking). Reply with any of these, other server names, or none.
+
+Collect the response into `MCP_SERVERS` (may be empty).
 
 ---
 
@@ -93,26 +88,21 @@ mkdir -p ~/Klaviyo/projects/<PROJECT_NAME>/map
 
 ### 5b: `.claude/settings.json`
 
-Write `~/Klaviyo/projects/<PROJECT_NAME>/.claude/settings.json` (the shared, committed starter config; anyone who clones the project inherits these permissions and repo directories, and personal overrides go in `.claude/settings.local.json` later, which stays gitignored):
+Write `~/Klaviyo/projects/<PROJECT_NAME>/.claude/settings.json` (the shared, committed starter config; anyone who clones the project inherits these repo directories, and personal overrides go in `.claude/settings.local.json` later, which stays gitignored):
 
 ```json
 {
   "permissions": {
-    "allow": [
-      "<each selected permission>"
-    ],
     "additionalDirectories": [
-      "<~/r/REPO for each selected repo>"
+      "<~/Klaviyo/Repos/REPO for each selected repo>"
     ]
   }
 }
 ```
 
-Use `~/r/<repo>` format for `additionalDirectories` (matching existing project conventions).
+### 5c: `AGENTS.md`
 
-### 5c: `CLAUDE.md`
-
-Write `~/Klaviyo/projects/<PROJECT_NAME>/CLAUDE.md`:
+Write `~/Klaviyo/projects/<PROJECT_NAME>/AGENTS.md`. This is the vendor-neutral home for all agent-facing instructions; `CLAUDE.md` just imports it (5d) so other tools that read `AGENTS.md` natively see the same content without duplication. The personal, gitignored counterpart is `AGENTS.local.md` / `CLAUDE.local.md` (5e/5f).
 
 ```markdown
 # <PROJECT_NAME>
@@ -125,7 +115,7 @@ Write `~/Klaviyo/projects/<PROJECT_NAME>/CLAUDE.md`:
 
 ## Repositories
 
-<bulleted list of selected repos with paths>
+<bulleted list of selected repos with `~/Klaviyo/Repos/<repo>` paths>
 
 ## Slack channels
 
@@ -161,13 +151,39 @@ Read `project-map.md` to orient yourself. Do NOT read individual map files unles
 Use `/project:plan` for all feature planning. It handles brainstorming, design specs with contracts, and per-repo session prompt generation. Implementation plans are created by agents in each repo, not here.
 ```
 
-### 5d: `.gitignore`
+### 5d: `CLAUDE.md`
+
+Write `~/Klaviyo/projects/<PROJECT_NAME>/CLAUDE.md` as a single-line import, no duplicated content:
+
+```markdown
+@AGENTS.md
+```
+
+### 5e: `AGENTS.local.md`
+
+Write `~/Klaviyo/projects/<PROJECT_NAME>/AGENTS.local.md` (gitignored; personal, project-specific notes that shouldn't be shared with the team, e.g. sandbox URLs, local credentials, scratch preferences):
+
+```markdown
+# <PROJECT_NAME> (personal notes)
+
+Personal notes for this project. Not committed to git.
+```
+
+### 5f: `CLAUDE.local.md`
+
+Write `~/Klaviyo/projects/<PROJECT_NAME>/CLAUDE.local.md` as a single-line import (gitignored). Claude Code auto-loads `CLAUDE.local.md` alongside `CLAUDE.md` at session start, so no explicit import is needed elsewhere, this file just points at where the real content lives:
+
+```markdown
+@AGENTS.local.md
+```
+
+### 5g: `.gitignore`
 
 ```bash
 cp ~/.claude/templates/project/.gitignore ~/Klaviyo/projects/<PROJECT_NAME>/.gitignore
 ```
 
-### 5e: `project-map.md`
+### 5h: `project-map.md`
 
 Write `~/Klaviyo/projects/<PROJECT_NAME>/project-map.md`:
 
@@ -179,9 +195,9 @@ Write `~/Klaviyo/projects/<PROJECT_NAME>/project-map.md`:
 > Run `/project:map` to generate the index, then `/project:map overview` for the system overview.
 ```
 
-### 5f: `README.md`
+### 5i: `README.md`
 
-Write `~/Klaviyo/projects/<PROJECT_NAME>/README.md` as the human front door (engineers open this first; `CLAUDE.md` is the agent-facing twin). Seed the **Slack channels** section from `PROJECT_CHANNELS`, identical to the block written into `CLAUDE.md`.
+Write `~/Klaviyo/projects/<PROJECT_NAME>/README.md` as the human front door (engineers open this first; `AGENTS.md` is the agent-facing twin). Seed the **Slack channels** section from `PROJECT_CHANNELS`, identical to the block written into `AGENTS.md`.
 
 ```markdown
 # <PROJECT_NAME>
@@ -194,11 +210,11 @@ Write `~/Klaviyo/projects/<PROJECT_NAME>/README.md` as the human front door (eng
 
 ## Repositories
 
-<bulleted list of selected repos with `~/r/<repo>` paths>
+<bulleted list of selected repos with `~/Klaviyo/Repos/<repo>` paths>
 
 ## Slack channels
 
-<same bullets as CLAUDE.md, seeded from PROJECT_CHANNELS; omit roles left blank>
+<same bullets as AGENTS.md, seeded from PROJECT_CHANNELS; omit roles left blank>
 - **Team:** #<handle> (<purpose>)
 - **Project:** #<handle> (this project's channel)
 - **Other:** #<handle> (<purpose>)
@@ -218,10 +234,14 @@ This directory is the coordination hub; the code lives in the repos above. Drive
 - `/project:map`: build or refresh the repo navigation map
 - `/project:capture`: capture a thought or note into the project
 
-See `CLAUDE.md` for the agent-facing orientation and `project-map.md` for codebase navigation.
+See `AGENTS.md` for the agent-facing orientation and `project-map.md` for codebase navigation.
 ```
 
-### 5g: Git init
+### 5j: `.mcp.json` (only if `MCP_SERVERS` is non-empty)
+
+Write `~/Klaviyo/projects/<PROJECT_NAME>/.mcp.json` with one entry per selected server. Check `~/.claude.json` or the user's existing global MCP config first in case a matching server definition already exists to copy; otherwise consult the `plugin-dev:mcp-integration` skill for the correct shape (stdio/http/sse) and leave connection details (URL, command, auth) as clearly-marked placeholders for the user to fill in. Don't invent credentials or endpoints.
+
+### 5k: Git init
 
 ```bash
 cd ~/Klaviyo/projects/<PROJECT_NAME>
@@ -239,7 +259,7 @@ Display a summary of what was created:
 - Project path
 - Repos configured as additional directories
 - Slack channels recorded
-- Permissions granted
+- MCP servers configured (if any)
 - Files and directories created
 
 Suggest next steps:

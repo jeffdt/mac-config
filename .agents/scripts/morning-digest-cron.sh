@@ -302,7 +302,7 @@ if [[ ${#aging[@]} -gt 0 ]]; then
     short_reason="${short_reason//; / + }"
     wt_prune_section+=$'\n'"  • \`$repo_name/$display\` _(${age}d, ${short_reason})_"
   done
-  wt_prune_section+=$'\n\n'"[🧹 Triage in cmux](hammerspoon://wt-prune)"
+  wt_prune_section+=$'\n\n'"[🧹 Triage aging worktrees](hammerspoon://wt-prune)"
 fi
 
 if [[ ${#removed[@]} -eq 0 && ${#aging[@]} -eq 0 ]]; then
@@ -403,13 +403,17 @@ if [[ "$MODE" != "post" && "$GAP_DAYS" -gt 0 && "$daily_log_status" != "auth_exp
   # daily-log call must inherit the normal server config so OAuth works.
   DAILY_LOG_TIMEOUT="${DAILY_LOG_TIMEOUT:-900}"
   DAILY_LOG_MAX_ATTEMPTS="${DAILY_LOG_MAX_ATTEMPTS:-2}"
+  DAILY_LOG_PROMPT="/pkm:daily-log $DAILY_LOG_ARG
+
+Non-interactive morning-digest cron run. Treat the date argument above as already approved. Do not ask follow-up questions about missing workday gaps. If the argument is a range, generate every workday in that range. If it is a single date and earlier workdays are missing, generate the requested date only."
+  echo "$(now_ts) AUTO daily-log requested: $DAILY_LOG_ARG" >> "$DIGEST_LOG_DIR/daily-log.log"
   pipeline_ok=0
   attempt=1
   while [[ "$attempt" -le "$DAILY_LOG_MAX_ATTEMPTS" ]]; do
     [[ "$attempt" -gt 1 ]] && \
       echo "$(now_ts) AUTO daily-log retry (attempt $attempt/$DAILY_LOG_MAX_ATTEMPTS)" \
         >> "$DIGEST_LOG_DIR/daily-log.log"
-    if timeout -k 30 "$DAILY_LOG_TIMEOUT" "$CLAUDE" -p "/pkm:daily-log $DAILY_LOG_ARG" \
+    if timeout -k 30 "$DAILY_LOG_TIMEOUT" "$CLAUDE" -p "$DAILY_LOG_PROMPT" \
          --permission-mode bypassPermissions \
          --verbose --output-format stream-json \
          </dev/null \
@@ -611,7 +615,7 @@ case "$daily_log_status" in
 
   failed)
     daily_log_section="📓 *${TARGET_DAY_LONG}'s log* — generation failed (see $DIGEST_LOG_DIR/daily-log.log)"
-    daily_log_section+=$'\n'"[🔍 Investigate in cmux](hammerspoon://morning-digest-debug)"
+    daily_log_section+=$'\n'"[🔍 Investigate log failure](hammerspoon://morning-digest-debug)"
     ;;
 
   auth_expired)

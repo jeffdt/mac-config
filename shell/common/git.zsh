@@ -42,9 +42,9 @@ function gpx() {
     git status
 }
 
-# Debug log for the PR launcher flow (prr/prw/prf/prd). Tentacle-spawned tmux
+# Debug log for the PR launcher flow (prr/prw/prf/prd/gcd). Tentacle-spawned tmux
 # windows run the launcher and then `exec` the chosen CLI (claude for prr/prw;
-# claude or pi for prd/prf); if anything before the handoff fails or the CLI
+# claude or pi for prd/prf/gcd); if anything before the handoff fails or the CLI
 # exits immediately, the window can vanish before its output can be read. This
 # file records how far slot prep got and whether the exec handoff was reached.
 # It lives under $TMPDIR (macOS purges it, so it never grows unbounded across
@@ -232,6 +232,21 @@ prd() {
     _pr_feedback_prepare "$url" && exec "$engine" "$prompt"
 }
 
+# Find the local worktree (if any) that already has `branch` checked out in
+# `repo_path`. Echoes the worktree path and returns 0, or returns 1 if none
+# exists. Shared by prf's own-PR fast path and gcd's feature-branch reuse.
+_pr_worktree_for_branch() {
+    local repo_path="$1" branch="$2"
+    local existing
+    existing="$(git -C "$repo_path" worktree list --porcelain \
+        | awk -v target="refs/heads/$branch" '
+            /^worktree / { path = substr($0, 10) }
+            /^branch /   { if ($2 == target) { print path; exit } }
+        ')"
+    [[ -n "$existing" && -d "$existing" ]] || return 1
+    echo "$existing"
+}
+
 # Unlike prr/prw, /pr:feedback is usually run against your OWN open PR, so the
 # branch is already checked out in your feature worktree. Using a fresh review
 # slot would fail with "already checked out in another worktree".
@@ -296,13 +311,7 @@ EOF
     fi
 
     local existing
-    existing="$(git -C "$repo_path" worktree list --porcelain \
-        | awk -v target="refs/heads/$branch" '
-            /^worktree / { path = substr($0, 10) }
-            /^branch /   { if ($2 == target) { print path; exit } }
-        ')"
-
-    if [[ -n "$existing" && -d "$existing" ]]; then
+    if existing="$(_pr_worktree_for_branch "$repo_path" "$branch")"; then
         cd "$existing" || { echo "$caller: could not cd into $existing" >&2; return 1; }
         git fetch origin "$branch" >/dev/null 2>&1
         return 0
@@ -318,4 +327,157 @@ prf() {
     local engine nshift
     _pr_engine "$1"; shift $nshift
     _pr_feedback_prepare "$@" && exec "$engine" $'/pr:feedback\n\nScope: address only unresolved review threads. Ignore threads that are already resolved.'
+}
+
+# Parse a GitHub blob/tree URL into owner, repo, kind (blob|tree), and the
+# ref+path remainder, still combined: branch names can contain slashes (this
+# repo's own jeffdt/<domain>-<desc> convention does), so splitting ref from
+# path requires knowing the repo's actual branch list, which happens in
+# _gh_code_resolve_ref once the local clone is available. Strips any
+# `#L10-L25` line-range fragment or query string before matching.
+_gh_code_parse_url() {
+    local input="${1%%[#?]*}"
+    if [[ "$input" =~ ^https://github\.com/([^/]+)/([^/]+)/(blob|tree)/(.+)$ ]]; then
+        echo "${match[1]} ${match[2]} ${match[3]} ${match[4]}"
+        return 0
+    fi
+    return 1
+}
+
+# Split `rest` (ref+path, still combined) into ref and path by matching it
+# against the repo's real remote branches, longest name first so e.g.
+# `jeffdt/foo-bar` wins over a hypothetical shorter `jeffdt` branch. Falls
+# back to treating a bare hex string as a commit SHA, then to a naive
+# first-segment split (covers plain branch names with no slash). Echoes
+# "ref|path" (path may be empty, e.g. a tree URL at a branch root).
+_gh_code_resolve_ref() {
+    local repo_path="$1" rest="$2"
+    local branch
+    branch="$(git -C "$repo_path" for-each-ref --format='%(refname:short)' refs/remotes/origin \
+        | sed -e 's#^origin/##' -e '/^HEAD$/d' \
+        | awk '{ print length, $0 }' | sort -rn -k1,1 | cut -d' ' -f2- \
+        | while IFS= read -r b; do
+            if [[ "$rest" == "$b" || "$rest" == "$b/"* ]]; then
+                echo "$b"
+                break
+            fi
+          done)"
+
+    if [[ -n "$branch" ]]; then
+        local relpath="${rest#$branch}"
+        echo "${branch}|${relpath#/}"
+        return 0
+    fi
+
+    local first="${rest%%/*}" relpath="${rest#*/}"
+    [[ "$relpath" == "$rest" ]] && relpath=""
+    echo "${first}|${relpath}"
+}
+
+# True if `ref` shouldn't get a reusable long-lived worktree slot: the
+# repo's default branch, a literal main/master/develop, or a raw commit SHA.
+# Keying a slot off "main" would collide across unrelated visits, and
+# SHA-named slots would pile up with no natural reuse point.
+_gh_code_is_default_or_sha() {
+    local repo_path="$1" ref="$2"
+    case "$ref" in
+        main|master|develop) return 0 ;;
+    esac
+    [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]] && return 0
+    local default_branch
+    default_branch="$(git -C "$repo_path" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+    [[ -n "$default_branch" && "$ref" == "$default_branch" ]]
+}
+
+# Prepare a worktree for a github-code discuss session and cd into it.
+# Reusable branches get a long-lived slot keyed by repo+branch (checking for
+# an already-checked-out worktree first, same as _pr_feedback_prepare, since
+# the user is often already working on their own branch). Default-branch or
+# raw-SHA refs get a fresh detached worktree each time instead, so the caller
+# (gcd) can tell the spawned session to cut its own branch before touching
+# anything. Sets `gcd_ephemeral` (pre-declared local in the caller, per the
+# _pr_engine dynamic-scoping trick) to 1 in that case.
+_gh_code_prepare_slot() {
+    local caller="${funcstack[2]:-gcd}"
+    local url="$1"
+    gcd_ephemeral=0
+
+    local parsed
+    if ! parsed="$(_gh_code_parse_url "$url")"; then
+        echo "$caller: not a GitHub blob/tree url: $url" >&2
+        return 1
+    fi
+    local owner repo kind rest
+    read -r owner repo kind rest <<< "$parsed"
+
+    local repo_path
+    if ! repo_path="$(_pr_locate_repo "$repo")"; then
+        _pr_locate_repo_error "$caller" "$repo"
+        return 1
+    fi
+
+    _pr_log "fetch origin in '$repo_path'"
+    git -C "$repo_path" fetch origin --prune >/dev/null 2>&1
+
+    local ref relpath
+    IFS='|' read -r ref relpath <<< "$(_gh_code_resolve_ref "$repo_path" "$rest")"
+    _pr_log "parsed owner='$owner' repo='$repo' kind='$kind' ref='$ref' relpath='$relpath'"
+
+    if _gh_code_is_default_or_sha "$repo_path" "$ref"; then
+        gcd_ephemeral=1
+        local slot_path="${repo_path}.code-discuss-$$"
+        _pr_log "ephemeral ref='$ref'; worktree add --detach '$slot_path'"
+        git -C "$repo_path" worktree add --detach "$slot_path" "origin/$ref" 2>/dev/null \
+            || git -C "$repo_path" worktree add --detach "$slot_path" "$ref" \
+            || { _pr_log "FAIL worktree add rc=$?"; echo "$caller: could not create worktree at '$ref'" >&2; return 1; }
+        cd "$slot_path" || { _pr_log "FAIL cd rc=$?"; return 1; }
+        return 0
+    fi
+
+    local existing
+    if existing="$(_pr_worktree_for_branch "$repo_path" "$ref")"; then
+        _pr_log "reusing existing worktree for '$ref': '$existing'"
+        cd "$existing" || { _pr_log "FAIL cd rc=$?"; echo "$caller: could not cd into $existing" >&2; return 1; }
+        git fetch origin "$ref" >/dev/null 2>&1
+        return 0
+    fi
+
+    local sanitized="${ref//\//-}"
+    local slot_path="${repo_path}.code-discuss-${sanitized}"
+    _pr_log "no existing worktree for '$ref'; slot_path='$slot_path' slot_exists=$([[ -d "$slot_path" ]] && echo yes || echo no)"
+
+    if [[ ! -d "$slot_path" ]]; then
+        if git -C "$repo_path" show-ref --verify --quiet "refs/heads/$ref"; then
+            git -C "$repo_path" worktree add "$slot_path" "$ref"
+        else
+            git -C "$repo_path" worktree add "$slot_path" -b "$ref" "origin/$ref"
+        fi || { _pr_log "FAIL worktree add rc=$?"; echo "$caller: could not create worktree for '$ref'" >&2; return 1; }
+    fi
+
+    cd "$slot_path" || { _pr_log "FAIL cd rc=$?"; return 1; }
+    git fetch origin "$ref" >/dev/null 2>&1
+    git reset --hard "origin/$ref" >/dev/null 2>&1
+    git clean -fd >/dev/null 2>&1
+    return 0
+}
+
+# Open a fresh session on a GitHub file/directory browse page with a
+# user-typed opening instruction (the "Discuss…" mode from the Tentacle
+# dropdown on blob/tree pages). Mirrors prd's shape: engine-selectable,
+# worktree prep delegated to a helper, then exec with the page url + prompt so
+# Claude sees the exact file (and any #L10-L25 line-range fragment) as well as
+# the user's question -- no extra parsing needed, it's just part of the URL.
+gcd() {
+    local engine nshift gcd_ephemeral
+    _pr_engine "$1"; shift $nshift
+    local url="$1" prompt="$2"
+    if [[ -z "$url" || -z "$prompt" ]]; then
+        echo "gcd: usage: gcd [--claude|--gpt] <github-blob-or-tree-url> <prompt>" >&2
+        return 1
+    fi
+    _gh_code_prepare_slot "$url" || return 1
+    local note=""
+    (( gcd_ephemeral )) && note=$'You are in a fresh detached-HEAD worktree at this ref. Cut your own branch before making any changes.\n\n'
+    _pr_log "_gh_code_prepare_slot ok ephemeral=$gcd_ephemeral; exec $engine cwd='$PWD'"
+    exec "$engine" "${note}${url}"$'\n\n'"${prompt}"
 }
