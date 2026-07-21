@@ -209,7 +209,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/Users/hom/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-track.sh'"
+            "command": "bash '/Users/jeff.diteodoro/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-track.sh'"
           }
         ]
       }
@@ -220,7 +220,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/Users/hom/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-cleanup.sh'"
+            "command": "bash '/Users/jeff.diteodoro/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-cleanup.sh'"
           }
         ]
       }
