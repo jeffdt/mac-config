@@ -180,11 +180,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ~/.claude/scripts/approve-compound-bash.js",
-            "timeout": 5
-          },
-          {
-            "type": "command",
             "command": "bash ~/.claude/scripts/tmux-mux-nudge.sh",
             "if": "Bash(tmux *)",
             "timeout": 5
@@ -209,7 +204,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-track.sh"
+            "command": "bash '/Users/hom/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-track.sh'"
           }
         ]
       }
@@ -220,7 +215,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-cleanup.sh"
+            "command": "bash '/Users/hom/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-cleanup.sh'"
           }
         ]
       }
@@ -231,16 +226,16 @@
     "command": "~/.claude/statusline.py"
   },
   "enabledPlugins": {
-    "code-simplifier@claude-plugins-official": false,
+    "code-simplifier@claude-plugins-official": true,
     "codex@openai-codex": true,
-    "github@claude-plugins-official": false,
-    "linear@claude-plugins-official": false,
-    "pagerduty@claude-plugins-official": false,
+    "github@claude-plugins-official": true,
+    "linear@claude-plugins-official": true,
+    "pagerduty@claude-plugins-official": true,
     "plugin-dev@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
     "rust-analyzer-lsp@claude-plugins-official": true,
-    "sentry@claude-plugins-official": false,
-    "slack@claude-plugins-official": false,
+    "sentry@claude-plugins-official": true,
+    "slack@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
     "CLI@klaviyo-plugins": true,
     "kl-storytime@klaviyo-plugins": true,
