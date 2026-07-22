@@ -64,11 +64,6 @@
       "Bash(pip3 show:*)",
       "Bash(python -m pytest:*)",
       "Bash(rg:*)",
-      "Bash(spacectl profile list:*)",
-      "Bash(spacectl profile login:*)",
-      "Bash(spacectl stack list:*)",
-      "Bash(spacectl stack logs:*)",
-      "Bash(spacectl whoami:*)",
       "Bash(yarn lint)",
       "Bash(yarn lint:*)",
       "Bash(yarn prettier:*)",
@@ -170,7 +165,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.agents/scripts/backup-config.sh",
+            "command": "bash ~/.claude/scripts/backup-config.sh",
             "timeout": 10
           }
         ]
@@ -180,8 +175,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/scripts/tmux-mux-nudge.sh",
             "if": "Bash(tmux *)",
+            "command": "bash ~/.claude/scripts/tmux-mux-nudge.sh",
             "timeout": 5
           }
         ]
@@ -226,21 +221,21 @@
     "command": "~/.claude/statusline.py"
   },
   "enabledPlugins": {
+    "CLI@klaviyo-plugins": true,
     "code-simplifier@claude-plugins-official": true,
     "codex@openai-codex": true,
     "github@claude-plugins-official": true,
+    "kl-storytime@klaviyo-plugins": true,
     "linear@claude-plugins-official": true,
-    "pagerduty@claude-plugins-official": true,
+    "pagerduty@claude-plugins-official": false,
+    "permissions-audit@klaviyo-plugins": true,
+    "personal-voice@klaviyo-plugins": true,
     "plugin-dev@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
     "rust-analyzer-lsp@claude-plugins-official": true,
     "sentry@claude-plugins-official": true,
     "slack@claude-plugins-official": true,
-    "superpowers@claude-plugins-official": true,
-    "CLI@klaviyo-plugins": true,
-    "kl-storytime@klaviyo-plugins": true,
-    "permissions-audit@klaviyo-plugins": true,
-    "personal-voice@klaviyo-plugins": true
+    "superpowers@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "chrome-devtools-plugins": {
@@ -262,21 +257,7 @@
   "tui": "fullscreen",
   "theme": "dark-ansi",
   "preferredNotifChannel": "ghostty",
-  "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true,
   "voiceEnabled": true,
-  "skillOverrides": {
-    "buildkite-mcp": "off",
-    "cmux": "off",
-    "creating-tickets": "off",
-    "cross-repo-patterns": "off",
-    "jeff-github-review-voice": "off",
-    "klaviyocli-terraform": "off",
-    "obsidian-cli": "off",
-    "planning-feature": "off",
-    "relay": "off",
-    "relay-auto": "off",
-    "web-to-tmux-launcher": "off",
-    "writing-tests": "off"
-  }
+  "agentPushNotifEnabled": true
 }
