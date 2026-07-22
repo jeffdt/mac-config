@@ -232,9 +232,9 @@ Invoke `scripts/plan-launch-sessions.sh` (absolute path: `/Users/jeff.diteodoro/
 ```
 
 The script:
-- Detects whether the planner is running inside tmux or cmux (via `mux status`).
-- **Inside tmux or cmux**: spawns one new tab/window per repo in the session/workspace that hosts this planning session (resolved via `mux status --json`), regardless of which session the user is currently viewing in the UI. Tabs don't steal focus; they stack in the calling session's workspace.
-- **Outside tmux/cmux**: pipes each launch command through `pbcopy` with a short sleep between, so the clipboard manager captures each as a distinct history entry.
+- Detects whether the planner is running inside tmux (via `mux status`).
+- **Inside tmux**: spawns one new tab/window per repo in the session that hosts this planning session (resolved via `mux status --json`), regardless of which session the user is currently viewing in the UI. Tabs don't steal focus; they stack in the calling session's workspace.
+- **Outside tmux**: pipes each launch command through `pbcopy` with a short sleep between, so the clipboard manager captures each as a distinct history entry.
 - Prints the full launch command for each repo (in both modes), plus a final `done: N session(s): <repos>` summary.
 - Exits non-zero if any repo path is missing, a prompt file is missing, or a `mux spawn` call fails. Paths must be absolute and contain no spaces.
 

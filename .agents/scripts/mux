@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
-# mux — unified multiplexer dispatcher.
+# mux — tmux automation dispatcher.
 #
-# Fronts tmux (native, this file) and cmux (delegated to ~/.claude/scripts/cmx).
-# Backend detection: MUX_BACKEND override > $TMUX (tmux) > $CMUX_WORKSPACE_ID (cmux).
-# When both $TMUX and $CMUX_WORKSPACE_ID are set (tmux nested in a cmux surface),
-# tmux wins — it is the inner multiplexer the user navigates.
-#
-# Verbs: status spawn new-workspace send send-key read wait-for settle
+# Verbs: status spawn new-workspace send send-key paste read wait-for settle
 #        close rename focus resolve list
 # Exit codes: 0 ok | 1 generic/not-in-mux | 2 bad args | 3 not found | 124 timeout
 set -euo pipefail
@@ -22,8 +17,7 @@ usage()    { printf 'mux: %s\n' "$*" >&2; exit "$ERR_USAGE"; }
 notfound() { printf 'mux: %s\n' "$*" >&2; exit "$ERR_NOTFOUND"; }
 
 # Normalize a key name to tmux's send-keys vocabulary.
-# Accepts cmx-style (ctrl+c, enter, alt+x) AND tmux-style (C-c, Enter, M-x).
-# The two forms do not collide, so accepting both removes any future migration.
+# Accepts both ctrl+c/enter/alt+x style and tmux-style (C-c, Enter, M-x).
 mux_key_to_tmux() {
   local k=$1
   k=${k//ctrl+/C-}
@@ -39,19 +33,6 @@ mux_key_to_tmux() {
     bspace|backspace) printf 'BSpace' ;;
     *)                printf '%s' "$k" ;;
   esac
-}
-
-# Resolve the active backend. Prints "tmux" or "cmux"; returns 1 if neither.
-mux_detect_backend() {
-  if [[ -n "${MUX_BACKEND:-}" ]]; then
-    case "$MUX_BACKEND" in
-      tmux|cmux) printf '%s' "$MUX_BACKEND"; return 0 ;;
-      *) printf 'mux: invalid MUX_BACKEND: %s (want tmux|cmux)\n' "$MUX_BACKEND" >&2; return "$ERR_USAGE" ;;
-    esac
-  fi
-  [[ -n "${TMUX:-}" ]]               && { printf 'tmux'; return 0; }
-  [[ -n "${CMUX_WORKSPACE_ID:-}" ]]  && { printf 'cmux'; return 0; }
-  return 1
 }
 
 # --- tmux backend helpers ---
@@ -142,6 +123,33 @@ cmd_send_key_tmux() {
   tmux send-keys -t "$tgt" "$tkey" || die "send-key: send-keys failed"
 }
 
+cmd_paste_tmux() {
+  local workspace='caller' tab='' enter=0
+  while (( $# )); do
+    case "$1" in
+      --workspace) workspace=$2; shift 2 ;;
+      --tab)       tab=$2; shift 2 ;;
+      --enter)     enter=1; shift ;;
+      *) usage "paste: unknown arg $1" ;;
+    esac
+  done
+  [[ -n "$tab" ]] || usage "paste: --tab required"
+  local sess tgt buf
+  sess=$(mux_tmux_resolve_ws "$workspace")
+  tgt=$(mux_tmux_resolve_tab "$sess" "$tab")
+  buf="mux-paste-$$"
+  # Load stdin into a scratch buffer, then paste it as ONE event rather than
+  # a stream of keystrokes (unlike `send`, which uses send-keys -l and would
+  # treat embedded newlines as real Enter presses). -p wraps the paste in
+  # bracket control codes when the target app has requested bracketed paste
+  # mode (e.g. Claude Code, so it can accept multi-line input as literal
+  # text instead of submitting mid-paste); -d deletes the scratch buffer
+  # immediately after so it never lingers.
+  tmux load-buffer -b "$buf" - || die "paste: load-buffer failed"
+  tmux paste-buffer -p -d -b "$buf" -t "$tgt" || die "paste: paste-buffer failed"
+  (( enter )) && { tmux send-keys -t "$tgt" Enter || die "paste: Enter failed"; }
+}
+
 cmd_spawn_tmux() {
   local workspace='caller' cwd='' cmd='' title='' focus=0 json=0
   while (( $# )); do
@@ -162,9 +170,9 @@ cmd_spawn_tmux() {
   # Create the window running an interactive shell, NOT the command directly:
   # tmux destroys a window when its process exits, so running the command AS the
   # window process makes short commands vanish before their output can be read.
-  # Mirror cmux's create-then-send — spawn a shell, then send the command into
-  # it — so the window persists after the command finishes (and claude/REPLs land
-  # back at a live shell on exit). The -d holds the no-focus default: a bare
+  # Create-then-send instead: spawn a shell, then send the command into it, so
+  # the window persists after the command finishes (and claude/REPLs land back
+  # at a live shell on exit). The -d holds the no-focus default: a bare
   # new-window would SELECT the new window.
   local args=(new-window -d -t "=${sess}:" -c "$cwd" -P -F '#{window_id}')
   [[ -n "$title" ]] && args+=(-n "$title")
@@ -366,21 +374,16 @@ cmd_status_tmux() {
 }
 
 main() {
-  local backend
-  backend=$(mux_detect_backend) || die "not inside tmux or cmux (no \$TMUX or \$CMUX_WORKSPACE_ID; set MUX_BACKEND to force)"
-  if [[ "$backend" == "cmux" ]]; then
-    command -v cmx >/dev/null 2>&1 || die "cmux backend: cmx not found on PATH"
-    exec cmx "$@"
-  fi
-  # tmux backend dispatch added in later tasks.
+  [[ -n "${TMUX:-}" ]] || die "not inside tmux (no \$TMUX in environment)"
   local verb=${1:-}
-  [[ -n "$verb" ]] || usage "no verb (want: status spawn send send-key read wait-for settle close rename focus resolve list new-workspace)"
+  [[ -n "$verb" ]] || usage "no verb (want: status spawn send send-key paste read wait-for settle close rename focus resolve list new-workspace)"
   shift
   case "$verb" in
     status)   cmd_status_tmux "$@" ;;
     spawn)    cmd_spawn_tmux "$@" ;;
     send)     cmd_send_tmux "$@" ;;
     send-key) cmd_send_key_tmux "$@" ;;
+    paste)    cmd_paste_tmux "$@" ;;
     read)     cmd_read_tmux "$@" ;;
     wait-for)      cmd_wait_for_tmux "$@" ;;
     settle)        cmd_settle_tmux "$@" ;;

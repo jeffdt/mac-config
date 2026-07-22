@@ -125,7 +125,7 @@ Read `~/.hammerspoon/tentacle.lua` for the full picture. Key entries to study:
 
 - **`new-window -d` does not steal focus.** The window is created in the background; `open -a Ghostty` + `switch-client` bring it forward. `switch-client` is a no-op if no client is currently attached to the session — the window still waits for the next attach.
 
-- **tmux session created on demand.** Unlike the old cmux path (which required the workspace to already exist), `tmux_spawn` creates the session if it does not exist. No manual pre-creation step is needed.
+- **tmux session created on demand.** `tmux_spawn` creates the session if it does not exist. No manual pre-creation step is needed.
 
 - **tmux session names with spaces are fine.** `"pr reviews"` works. The engine uses `has-session -t "=$session"` (exact-match flag `=`) to avoid prefix collisions.
 

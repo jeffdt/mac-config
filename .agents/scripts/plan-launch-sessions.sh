@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # Launches one agent session per (repo, prompt, branch) triple.
 #
-# Inside tmux or cmux (detected via `mux status`): spawns each session in a
-# new tab/window within the workspace/session that hosts the *calling shell*
-# (resolved via `mux status --json` → workspace field), falling back to
-# $CMUX_WORKSPACE_ID if mux status can't resolve.
+# Inside tmux (detected via `mux status`): spawns each session in a new
+# tab/window within the session that hosts the *calling shell* (resolved via
+# `mux status --json` → workspace field).
 #
 # The workspace is resolved from `mux status` rather than a focus-tracking
 # API so the target stays stable even if the user has switched views in the
-# UI. On tmux, workspace = session name.
-# Outside tmux/cmux: copies each launch command to the clipboard via pbcopy,
+# UI. Workspace = tmux session name.
+# Outside tmux: copies each launch command to the clipboard via pbcopy,
 # with short sleeps between so a clipboard manager captures each as a
 # distinct history entry.
 #
@@ -67,18 +66,13 @@ elif ! mux status >/dev/null 2>&1; then
 fi
 
 # In mux mode, resolve the workspace that hosts the calling shell via
-# `mux status --json`. This reflects the current multiplexer session
-# regardless of what the user is viewing in the UI. Fall back to
-# $CMUX_WORKSPACE_ID (cmux-only, sticky to original workspace) only if
-# mux status can't determine the workspace.
+# `mux status --json`. This reflects the current tmux session regardless of
+# what the user is viewing in the UI.
 target_workspace=""
 if [[ $mode == mux ]]; then
   status_json=$(mux status --json 2>/dev/null || true)
   if [[ -n "$status_json" ]]; then
     target_workspace=$(printf '%s' "$status_json" | sed -n 's/.*"workspace":"\([^"]*\)".*/\1/p' 2>/dev/null || true)
-  fi
-  if [[ -z "$target_workspace" ]]; then
-    target_workspace="${CMUX_WORKSPACE_ID:-}"
   fi
 fi
 

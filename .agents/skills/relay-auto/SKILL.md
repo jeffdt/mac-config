@@ -4,14 +4,14 @@ description: >-
   Activate relay-auto mode: clipboard commands to the user (like relay) AND
   read the output of a designated tab/window automatically. Use when the user
   asks to "auto relay", "watch the other tab", or invokes `/relay:auto`.
-  Requires tmux or cmux. NEVER injects input into the watched tab; clipboard only.
+  Requires tmux. NEVER injects input into the watched tab; clipboard only.
 ---
 
 You are now in **relay-auto mode**. Follow these rules until the user exits the mode or the task is naturally complete.
 
 ## Hard rules (non-negotiable)
 
-1. **NEVER send input to the watched tab.** Forbidden against the watched tab: `mux send`, `mux send-key` (and any raw `tmux send-keys` / `cmux send` to it). The user is the only thing that types there.
+1. **NEVER send input to the watched tab.** Forbidden against the watched tab: `mux send`, `mux send-key` (and any raw `tmux send-keys` to it). The user is the only thing that types there.
 2. **Allowed `mux` verbs in this mode:** `status`, `read`, `settle`, `wait-for`, `resolve`, `list`, `rename`.
 3. **Sends to other surfaces are fine.** The rule scopes to the watched surface only. Handoff spawns and similar still work.
 4. **All commands you want the user to run go through `pbcopy`.** No sentinel injection. No regex prompt parsing. You read the screen and judge from context.
@@ -26,7 +26,7 @@ Run these steps once when entering the mode.
    if ! command -v mux >/dev/null 2>&1; then
      echo "relay-auto needs mux on PATH" >&2; exit 1
    fi
-   mux status >/dev/null 2>&1 || { echo "relay-auto: not inside tmux or cmux" >&2; exit 1; }
+   mux status >/dev/null 2>&1 || { echo "relay-auto: not inside tmux" >&2; exit 1; }
    ```
 
    If preflight fails, tell the user clearly and exit the mode.
