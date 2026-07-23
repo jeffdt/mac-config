@@ -79,6 +79,14 @@ mux_tmux_resolve_tab() {
   if [[ "$tab" == @* ]]; then
     printf '%s:%s' "$sess" "$tab"; return 0
   fi
+  # Plain integer: tmux's own session:index addressing. Takes precedence over
+  # a same-looking window name, matching how raw `tmux -t sess:N` resolves it.
+  if [[ "$tab" =~ ^[0-9]+$ ]]; then
+    wid=$(tmux list-windows -t "=$sess" -F '#{window_index} #{window_id}' 2>/dev/null \
+          | awk -v t="$tab" '$1 == t { print $2; exit }')
+    [[ -n "$wid" ]] || notfound "no window at index '$tab' in session '$sess'"
+    printf '%s:%s' "$sess" "$wid"; return 0
+  fi
   wid=$(tmux list-windows -t "=$sess" -F '#{window_id} #{window_name}' 2>/dev/null \
         | awk -v t="$tab" '$2 == t { print $1; exit }')
   [[ -n "$wid" ]] || notfound "no window named '$tab' in session '$sess'"
@@ -151,7 +159,7 @@ cmd_paste_tmux() {
 }
 
 cmd_spawn_tmux() {
-  local workspace='caller' cwd='' cmd='' title='' focus=0 json=0
+  local workspace='caller' cwd='' cmd='' title='' focus=0 json=0 keep_open=0
   while (( $# )); do
     case "$1" in
       --workspace) workspace=$2; shift 2 ;;
@@ -161,6 +169,7 @@ cmd_spawn_tmux() {
       --focus)     focus=1; shift ;;
       --no-focus)  focus=0; shift ;;
       --json)      json=1; shift ;;
+      --keep-open) keep_open=1; shift ;;
       *) usage "spawn: unknown arg $1" ;;
     esac
   done
@@ -179,6 +188,13 @@ cmd_spawn_tmux() {
   local wid
   wid=$(tmux "${args[@]}") || die "spawn: tmux new-window failed"
   [[ "$wid" == @* ]] || die "spawn: could not parse window id from: $wid"
+  # Belt-and-suspenders: create-then-send already keeps the window alive past
+  # --cmd exiting (the window's process is the shell, not --cmd itself), but
+  # remain-on-exit guards the window even if --cmd itself replaces the shell
+  # (e.g. a caller wrapping it in `exec`).
+  if (( keep_open )); then
+    tmux set-window-option -t "=${sess}:${wid}" remain-on-exit on || die "spawn: set-window-option remain-on-exit failed"
+  fi
   if [[ -n "$cmd" ]]; then
     tmux send-keys -t "=${sess}:${wid}" -l "$cmd" || die "spawn: send-keys failed"
     tmux send-keys -t "=${sess}:${wid}" Enter || die "spawn: Enter (cmd) failed"
@@ -340,9 +356,9 @@ cmd_resolve_tmux() {
 
 cmd_list_tmux() {
   local kind=${1:-}; shift || true
-  local json=0 workspace=''
+  local json=0 workspace='' all=0
   while (( $# )); do case "$1" in
-    --json) json=1; shift ;; --workspace) workspace=$2; shift 2 ;;
+    --json) json=1; shift ;; --workspace) workspace=$2; shift 2 ;; --all) all=1; shift ;;
     *) usage "list: unknown arg $1" ;; esac; done
   case "$kind" in
     workspaces)
@@ -350,12 +366,18 @@ cmd_list_tmux() {
       else tmux list-sessions -F '#{session_name}  #{session_windows} windows' 2>/dev/null; fi
       ;;
     tabs)
-      [[ -n "$workspace" ]] || usage "list tabs: --workspace required"
-      local sess; sess=$(mux_tmux_resolve_ws "$workspace")
-      if (( json )); then tmux list-windows -t "=$sess" -F '{"tab":"#{window_id}","title":"#{window_name}"}' 2>/dev/null
-      else tmux list-windows -t "=$sess" -F '#{window_id}  #{window_name}' 2>/dev/null; fi
+      [[ -n "$workspace" && "$all" -eq 1 ]] && usage "list tabs: --workspace and --all are mutually exclusive"
+      if (( all )); then
+        if (( json )); then tmux list-windows -a -F '{"workspace":"#{session_name}","tab":"#{window_id}","index":#{window_index},"title":"#{window_name}","cwd":"#{pane_current_path}","command":"#{pane_current_command}"}' 2>/dev/null
+        else tmux list-windows -a -F '#{session_name}:#{window_index}  #{window_id}  #{window_name}  #{pane_current_path}  #{pane_current_command}' 2>/dev/null; fi
+      else
+        [[ -n "$workspace" ]] || usage "list tabs: --workspace or --all required"
+        local sess; sess=$(mux_tmux_resolve_ws "$workspace")
+        if (( json )); then tmux list-windows -t "=$sess" -F '{"tab":"#{window_id}","title":"#{window_name}"}' 2>/dev/null
+        else tmux list-windows -t "=$sess" -F '#{window_id}  #{window_name}' 2>/dev/null; fi
+      fi
       ;;
-    *) usage "list: want 'workspaces' or 'tabs --workspace W'" ;;
+    *) usage "list: want 'workspaces' or 'tabs --workspace W' or 'tabs --all'" ;;
   esac
 }
 

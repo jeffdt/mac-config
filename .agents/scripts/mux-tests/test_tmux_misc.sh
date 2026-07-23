@@ -14,6 +14,11 @@ else
     "$(tmux list-windows -t "=$_sess" -F '#{window_id} #{window_name}' | awk -v w="$_win" '$1==w{print $2}')" \
     "rename: window-name updated"
 
+  env "${_env[@]}" bash "$MUX" rename --workspace "$_sess" --tab 1 --title renamed-by-index 2>/dev/null
+  assert_equals "renamed-by-index" \
+    "$(tmux list-windows -t "=$_sess" -F '#{window_id} #{window_name}' | awk -v w="$_win" '$1==w{print $2}')" \
+    "rename: --tab resolves a plain numeric index"
+
   assert_equals "$_sess" \
     "$(env "${_env[@]}" bash "$MUX" resolve workspace "$_sess" 2>/dev/null)" \
     "resolve workspace: existing session -> name"
@@ -21,6 +26,14 @@ else
   assert_equals "0" \
     "$(env "${_env[@]}" bash "$MUX" list tabs --workspace "$_sess" 2>/dev/null | grep -q "$_win" && echo 0 || echo 1)" \
     "list tabs: includes the window id"
+
+  assert_equals "0" \
+    "$(env "${_env[@]}" bash "$MUX" list tabs --all 2>/dev/null | grep -q "$_sess" && echo 0 || echo 1)" \
+    "list tabs --all: includes the session name"
+
+  assert_equals "0" \
+    "$(env "${_env[@]}" bash "$MUX" list tabs --all 2>/dev/null | grep -q "$_win" && echo 0 || echo 1)" \
+    "list tabs --all: includes the window id"
 
   _w2="$(tmux new-window -d -t "=${_sess}:" -P -F '#{window_id}')"
   env "${_env[@]}" bash "$MUX" close --workspace "$_sess" --tab "$_w2" 2>/dev/null

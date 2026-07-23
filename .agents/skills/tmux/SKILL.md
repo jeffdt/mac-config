@@ -48,6 +48,34 @@ wherever they are without being yanked away.
   and tell the user where to find it (session/window name) instead of forcing
   it into view.
 
+## Identify "this" window before touching it
+
+Before any action that targets "the current" window/pane — closing it,
+renaming it, sending keys "here" — confirm identity with `mux status
+--json`. It resolves via `$TMUX_PANE`, the pane id tmux actually assigned
+this process, so it's correct even when this process is a spawned/backgrounded
+agent rather than the attached client.
+
+**Never use bare `tmux display-message -p` (no explicit `-t`) to
+self-identify.** Without a target it falls back to tmux's notion of the
+session's current/active window, which can be a DIFFERENT window than the
+one this process is actually running in — especially for a non-interactive
+process like an agent's Bash tool, where there's no real attached client to
+resolve against. This has already caused a real incident: asked "what
+window am I in?", a bare `tmux display-message -p` returned an unrelated
+window that merely happened to be tmux's "current" one; that window was
+then closed, destroying a different, active session's in-progress work. The
+process asking the question was still alive afterward — proof the command
+had targeted the wrong window — and the mistake stayed silent until the
+user asked "did you just close a different window?"
+
+If you must fall back to raw `tmux` instead of `mux`, always thread
+`$TMUX_PANE` through explicitly rather than omitting `-t`:
+
+```bash
+tmux display-message -p -t "$TMUX_PANE" '#{session_name}:#{window_index} #{window_id} #{window_name}'
+```
+
 ## Prefer `mux`
 
 `mux` (`~/.agents/scripts/mux`, symlinked from `~/.local/bin/mux`) is the
@@ -57,7 +85,7 @@ allowlisted.
 | Want to… | `mux` verb |
 |---|---|
 | Confirm backend + identity | `mux status [--json]` |
-| Spawn a window + run a command | `mux spawn [--workspace caller] [--cwd P] [--cmd T] [--title N] [--focus]` |
+| Spawn a window + run a command | `mux spawn [--workspace caller] [--cwd P] [--cmd T] [--title N] [--focus] [--keep-open]` |
 | New session + run a command | `mux new-workspace --name N [--cwd] [--cmd]` |
 | Send a command to a window | `mux send --workspace W --tab REF\|NAME --cmd T [--no-enter]` |
 | Send a key | `mux send-key --tab REF\|NAME --key ctrl+c` (also accepts `C-c`) |
@@ -68,12 +96,14 @@ allowlisted.
 | Close / rename a window | `mux close --tab …` / `mux rename --tab … --title …` |
 | Focus a window (+ raise Ghostty) | `mux focus [--workspace W] [--tab REF] [--app]` |
 | Resolve a session / window | `mux resolve workspace NAME` / `mux resolve tab --workspace W --title T` |
-| Enumerate sessions / windows | `mux list workspaces` / `mux list tabs --workspace W` |
+| Enumerate sessions / windows | `mux list workspaces` / `mux list tabs --workspace W` / `mux list tabs --all` (every window, every session — session, index, tab id, title, cwd, current command) |
 
 **Handle contract:** workspace token = session name; tab token = window id
 `@N`. `spawn` prints the tab token on stdout; pass `--json` for
 `{workspace, tab, title}`. Tokens are opaque — pass them back, never parse them.
-`--workspace`/`--tab` also accept human names.
+`--workspace`/`--tab` also accept human names, and `--tab` also accepts a
+plain window index (e.g. `--tab 1`, matching raw tmux's `session:1`
+addressing) when you only have the position, not the name or `@id`.
 
 **`@N` is for `mux` calls, not for talking to the user.** It's tmux's internal
 window id — meaningless to a human, and it doesn't even tell you which session
@@ -81,6 +111,13 @@ a window is in. Always pass an explicit `--title` when spawning (never leave a
 window unnamed), and when telling the user what you did, say the session name
 and window title ("the `debug` window in `pi`"), never the raw `@N` token. Keep
 the token around only to pass into your own follow-up `mux` calls.
+
+**`spawn --keep-open`** sets `remain-on-exit on` on the new window, so it
+survives even if `--cmd` itself replaces the window's shell process (e.g. a
+caller wrapping it in `exec`). Not needed for ordinary `--cmd` usage — `spawn`
+already runs commands inside a persistent shell (see the gotcha below), so the
+window outlives a normal command exit either way. Use it as a defensive
+backstop for long-running interactive commands you don't fully control.
 
 **Workspace targeting:** `caller` (the calling pane's session — robust, never
 drifts; use for orchestrated spawns), `focused` (attached client's session).
@@ -100,6 +137,7 @@ Exit codes: `0` ok | `1` generic/not-in-mux | `2` bad args | `3` not found |
 | `switch-client` does nothing | no client is attached | best-effort; the window still exists and shows on next attach. |
 | `new-window` accepts cwd + command in ONE call | `-c <dir>` and a trailing shell-command | pass both directly; no create-then-send dance needed for that part. |
 | Session-name fuzzy match | `pi` could match `pyAI` | use the `=` exact-match prefix: `tmux ... -t "=$sess"`. `mux` does this. |
+| `tmux display-message -p` with no `-t` doesn't mean "here" | resolves to the session's current/active window, not necessarily this process's actual pane | use `mux status --json`, or pass `-t "$TMUX_PANE"` explicitly |
 
 ## Raw tmux recipes (when `mux` doesn't cover it)
 

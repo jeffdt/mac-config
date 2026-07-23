@@ -52,5 +52,11 @@ else
     "$(env "${_env[@]}" bash "$MUX" read --workspace "$_sess" --tab "$_ptab" 2>/dev/null | grep -q SPAWN_PERSIST_MARKER && echo 0 || echo 1)" \
     "spawn: short-command output readable after the command finished"
 
+  # --keep-open sets remain-on-exit on the spawned window.
+  _ktab="$(env "${_env[@]}" bash "$MUX" spawn --workspace "$_sess" --title keepopen --cmd 'sleep 30' --keep-open 2>/dev/null)"
+  assert_equals "on" \
+    "$(tmux show-window-options -t "=${_sess}:${_ktab}" -v remain-on-exit 2>/dev/null)" \
+    "spawn: --keep-open sets remain-on-exit on"
+
   tmux kill-session -t "=$_sess" 2>/dev/null || true
 fi
