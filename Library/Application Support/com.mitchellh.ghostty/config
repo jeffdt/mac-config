@@ -9,9 +9,6 @@ font-thicken = true
 keybind = shift+enter=text:\n
 
 split-divider-color = #bbb69a
-# window-inherit-working-directory = false
 
 keybind = global:ctrl+grave_accent=toggle_quick_terminal
 keybind = super+shift+t=prompt_tab_title
-
-# theme = warm-burnout-dark

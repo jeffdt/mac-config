@@ -165,7 +165,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/scripts/backup-config.sh",
+            "command": "bash ~/.agents/scripts/backup-config.sh",
             "timeout": 10
           }
         ]
