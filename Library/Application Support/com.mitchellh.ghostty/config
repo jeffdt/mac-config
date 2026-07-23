@@ -7,8 +7,3 @@
 font-family = Hack Nerd Font
 font-thicken = true
 keybind = shift+enter=text:\n
-
-split-divider-color = #bbb69a
-
-keybind = global:ctrl+grave_accent=toggle_quick_terminal
-keybind = super+shift+t=prompt_tab_title
