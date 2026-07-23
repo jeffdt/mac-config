@@ -68,13 +68,7 @@ config push                # Push to GitHub
 config pull                # Pull updates
 ```
 
-## Currently Tracked Files
-
-- `~/shell/common.zsh` - Shell config entry point
-- `~/shell/common/*` - Portable shell aliases, functions, fzf config
-- `~/.config/git/ignore` - Global git ignore patterns
-- `~/.config/zed/settings.json` - Zed editor settings
-- `~/README.md` - This file
+For what's tracked and how to keep it in sync (including troubleshooting bad syncs), see `AGENTS.md` in the bare repo's git-dir (`~/.dotfiles/AGENTS.md`) or run `config ls-tree -r --name-only main` for the live list.
 
 ## Notes
 
