@@ -175,8 +175,8 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(tmux *)",
             "command": "bash ~/.claude/scripts/tmux-mux-nudge.sh",
+            "if": "Bash(tmux *)",
             "timeout": 5
           }
         ]
@@ -257,7 +257,8 @@
   "tui": "fullscreen",
   "theme": "dark-ansi",
   "preferredNotifChannel": "ghostty",
+  "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true,
   "voiceEnabled": true,
-  "agentPushNotifEnabled": true
+  "model": "opus[1m]"
 }

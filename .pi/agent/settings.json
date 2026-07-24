@@ -1,8 +1,8 @@
 {
   "lastChangelogVersion": "0.81.1",
-  "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.6-terra",
-  "defaultThinkingLevel": "xhigh",
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-5.6-sol",
+  "defaultThinkingLevel": "medium",
   "enableSkillCommands": true,
   "packages": [
     "npm:context-mode",
