@@ -26,6 +26,7 @@ config = /usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME
 - Before assuming local is in sync with remote, `config fetch origin` first, then compare with `config status -sb` — `git status` alone can say "up to date" when it just hasn't fetched.
 - If local uncommitted changes and incoming remote commits touch different files, a scoped stash + `pull --ff-only` + stash pop reconciles cleanly without touching unrelated content.
 - Review the diff of every file about to be committed. If a change weakens something security-relevant (`.claude/settings.json` hooks or permission allowlists, SSH/GPG config, etc.) in a way that doesn't match what Jeff asked for, stop and flag it rather than committing silently.
+- Never commit a machine-specific absolute path (e.g. a hardcoded `/Users/<username>/...`) into a tracked file, this repo syncs across machines with different usernames/home directories. Use `$HOME` or `~` instead. Watch for this especially in hook `command` strings in `.claude/settings.json` and `.pi/agent/settings.json`, and flag it if you spot one on a pull, even if it came from upstream.
 
 Full step-by-step sync procedure: `/dotfiles-sync` (`.claude/commands/dotfiles-sync.md`, tracked in this repo).
 
