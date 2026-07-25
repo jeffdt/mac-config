@@ -31,5 +31,15 @@ Steps:
    config -C "$HOME" commit -m "<message>"
    config -C "$HOME" push
    ```
-8. Report what was pulled, what was committed/pushed, and flag anything left unresolved
-   (e.g. a file backed up for manual reconciliation, a stash entry still present).
+8. If `.tmux.conf` was among the files pulled in step 4 (check with
+   `git diff --name-only <old-HEAD> <new-HEAD>` from step 4's output, or `config -C "$HOME"
+   log --stat` if unsure), reload it for any running tmux server so the sync takes effect
+   immediately, rather than leaving stale config running until the next manual reload or
+   server restart:
+   ```
+   tmux info &>/dev/null && tmux source-file ~/.tmux.conf
+   ```
+   Skip silently if no tmux server is running (the `tmux info` check above handles that).
+9. Report what was pulled, what was committed/pushed, whether `.tmux.conf` was reloaded, and
+   flag anything left unresolved (e.g. a file backed up for manual reconciliation, a stash
+   entry still present).
