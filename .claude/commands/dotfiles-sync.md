@@ -23,7 +23,11 @@ Steps:
 6. Review the diff of every tracked file about to be committed. If anything looks like it
    weakens a security-relevant hook or permission (e.g. changes to `.claude/settings.json`
    hooks, permission allowlists) in a way that doesn't match what the user asked for, stop
-   and flag it before proceeding — don't commit it silently.
+   and flag it before proceeding — don't commit it silently. If a hardcoded machine-specific
+   absolute home path shows up (e.g. `/Users/hom/...`), don't omit or exclude that line from
+   the commit — rewrite the home-directory prefix to `~` in place and commit the corrected
+   line along with everything else, then restore the original absolute path in the live
+   working-tree file afterward so nothing changes functionally on this machine.
 7. Stage only the specific tracked files that changed, commit with a short imperative message
    describing what changed, and push:
    ```
