@@ -147,6 +147,7 @@
       "~/r/ami-build-and-cloud-init-scripts"
     ]
   },
+  "model": "opus",
   "hooks": {
     "Notification": [
       {
@@ -199,7 +200,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-track.sh\""
+            "command": "bash '~/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-track.sh'"
           }
         ]
       }
@@ -210,7 +211,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-cleanup.sh\""
+            "command": "bash '~/.tmux/plugins/tmux-assistant-resurrect/hooks/claude-session-cleanup.sh'"
           }
         ]
       }
@@ -259,6 +260,5 @@
   "preferredNotifChannel": "ghostty",
   "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true,
-  "voiceEnabled": true,
-  "model": "opus[1m]"
+  "voiceEnabled": true
 }

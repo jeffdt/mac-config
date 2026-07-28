@@ -20,7 +20,7 @@ r = "\033[0m"  # reset
 
 # Nerd Font icons
 icon_dir = "\uf413"  # nf-oct-file_directory
-icon_branch = "\ue725"  # nf-dev-git_branch
+icon_branch = "⌥"  # nf-dev-git_branch
 icon_tokens = "\U000f188f"  # nf-md-hand_coin
 icon_worktree = "\uf1bb"  # nf-fa-tree
 
