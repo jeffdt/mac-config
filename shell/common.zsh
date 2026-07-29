@@ -20,8 +20,8 @@ if command -v starship >/dev/null 2>&1; then
 fi
 
 # tp (teleport), directory portals
-if command -v warp-core >/dev/null 2>&1; then
-  eval "$(warp-core --init zsh)"
+if command -v tp-core >/dev/null 2>&1; then
+  eval "$(tp-core --init zsh)"
 fi
 
 # Machine-specific config (not tracked in git)
