@@ -147,7 +147,7 @@
       "~/r/ami-build-and-cloud-init-scripts"
     ]
   },
-  "model": "opus",
+  "model": "sonnet",
   "hooks": {
     "Notification": [
       {
@@ -250,6 +250,13 @@
         "source": "github",
         "repo": "openai/codex-plugin-cc"
       }
+    },
+    "tui-utils": {
+      "source": {
+        "source": "github",
+        "repo": "jeffdt/tui-utils"
+      },
+      "autoUpdate": true
     }
   },
   "alwaysThinkingEnabled": true,
