@@ -16,6 +16,7 @@ c = "\033[38;2;138;190;183m"  # cyan
 d = "\033[38;2;100;100;100m"  # dim gray
 red = "\033[38;2;204;102;102m"  # red
 y = "\033[38;2;240;198;116m"  # yellow
+ansi_red = "\033[31m"  # terminal-theme red
 r = "\033[0m"  # reset
 
 # Nerd Font icons
@@ -23,6 +24,7 @@ icon_dir = "\uf413"  # nf-oct-file_directory
 icon_branch = "⌥"  # nf-dev-git_branch
 icon_tokens = "\U000f188f"  # nf-md-hand_coin
 icon_worktree = "\uf1bb"  # nf-fa-tree
+icon_model = "\U000f1719"  # nf-md-robot_outline
 
 # Get directory name, detecting worktrees under {repo}/.worktrees/
 cwd = data.get("workspace", {}).get("current_dir", "")
@@ -86,5 +88,13 @@ if branch:
 # Context usage with icon (red at 90%+)
 parts.append(f"{d}·{r}")
 parts.append(f"{tok_color}{icon_tokens} {tok_display}{r}")
+
+# Model and reasoning effort level in ANSI red
+model_name = data.get("model", {}).get("display_name", "")
+effort = data.get("effort", {}).get("level", "")
+if model_name:
+    model_display = f"{model_name} {effort}".rstrip()
+    parts.append(f"{d}·{r}")
+    parts.append(f"{ansi_red}{icon_model} {model_display}{r}")
 
 print(" ".join(parts))
