@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""git clean filter: normalize tmux-assistant-resurrect hook command strings.
+
+Reinstalling the tmux-assistant-resurrect plugin rewrites the hook `command`
+values in .claude/settings.json / .pi/agent/settings.json to a hardcoded
+absolute path (and single quotes instead of the tracked double-quoted
+"$HOME/..." form). A plain string replace on the home directory alone would
+leave the quote style mismatched, which matters here: bash does not expand
+$HOME inside single quotes, so committing that form would silently break the
+hook. This regex normalizes both the path and the quoting back to the
+canonical "$HOME/..." form regardless of which quote style is present,
+so git sees no diff for this known-benign drift.
+"""
+import os
+import re
+import sys
+
+home = re.escape(os.environ["HOME"])
+data = sys.stdin.buffer.read().decode("utf-8")
+
+pattern = re.compile(
+    r"""(?:\\"|')(?:""" + home + r"""|\$HOME)(/\.tmux/plugins/tmux-assistant-resurrect/hooks/[\w.-]+\.sh)(?:\\"|')"""
+)
+data = pattern.sub(lambda m: '\\"$HOME' + m.group(1) + '\\"', data)
+
+sys.stdout.write(data)
