@@ -16,8 +16,21 @@ c = "\033[38;2;138;190;183m"  # cyan
 d = "\033[38;2;100;100;100m"  # dim gray
 red = "\033[38;2;204;102;102m"  # red
 y = "\033[38;2;240;198;116m"  # yellow
-ansi_red = "\033[31m"  # terminal-theme red
 r = "\033[0m"  # reset
+
+# Base ANSI colors for the model segment, so it tracks the terminal theme
+ansi_red = "\033[31m"
+ansi_yellow = "\033[33m"
+ansi_blue = "\033[34m"
+ansi_magenta = "\033[35m"
+
+# Matched as substrings against the model id and display name, first hit wins
+MODEL_COLORS = (
+    ("opus", ansi_red),
+    ("sonnet", ansi_magenta),
+    ("haiku", ansi_yellow),
+    ("fable", ansi_blue),
+)
 
 # Nerd Font icons
 icon_dir = "\uf413"  # nf-oct-file_directory
@@ -89,12 +102,17 @@ if branch:
 parts.append(f"{d}·{r}")
 parts.append(f"{tok_color}{icon_tokens} {tok_display}{r}")
 
-# Model and reasoning effort level in ANSI red
-model_name = data.get("model", {}).get("display_name", "")
+# Model and reasoning effort level, colored per model family
+model = data.get("model", {})
+model_name = model.get("display_name", "")
 effort = data.get("effort", {}).get("level", "")
 if model_name:
+    haystack = f"{model.get('id', '')} {model_name}".lower()
+    model_color = next(
+        (color for key, color in MODEL_COLORS if key in haystack), ansi_red
+    )
     model_display = f"{model_name} {effort}".rstrip()
     parts.append(f"{d}·{r}")
-    parts.append(f"{ansi_red}{icon_model} {model_display}{r}")
+    parts.append(f"{model_color}{icon_model} {model_display}{r}")
 
 print(" ".join(parts))

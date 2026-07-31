@@ -147,7 +147,7 @@
       "~/r/ami-build-and-cloud-init-scripts"
     ]
   },
-  "model": "sonnet",
+  "model": "opus[1m]",
   "hooks": {
     "Notification": [
       {
