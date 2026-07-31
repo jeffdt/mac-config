@@ -80,6 +80,7 @@ Create the following structure under `~/Klaviyo/projects/<PROJECT_NAME>/`:
 ### 5a: Directories
 
 ```bash
+mkdir -p ~/Klaviyo/projects/<PROJECT_NAME>/docs
 mkdir -p ~/Klaviyo/projects/<PROJECT_NAME>/specs
 mkdir -p ~/Klaviyo/projects/<PROJECT_NAME>/prompts
 mkdir -p ~/Klaviyo/projects/<PROJECT_NAME>/research
@@ -135,12 +136,27 @@ When asked to find or modify code, consult `project-map.md` first to identify wh
 
 ## Repo structure
 
+- `docs/`: durable, maintained documentation. The only prose directory whose contents are meant to be trusted.
+- `map/`: codebase navigation maps (meta, consumed by Claude for project context)
+- `research/`: findings and brainstorming scratch, dated and titled. See the warning below.
 - `specs/`: design specs with contracts (brainstorming output)
 - `prompts/`: per-repo session prompts for repo-local agents
-- `research/`: investigations, findings, point-in-time reference docs
-- `map/`: codebase navigation maps (meta, consumed by Claude for project context)
 - `artifacts/`: personal scratch docs (gitignored)
 - `drafts/`: WIPs not ready for others (gitignored)
+
+### `research/` is a scratchpad, not a wiki
+
+**Do not trust `research/` and do not try to maintain it.** It is where findings and
+brainstorming get dumped, nothing more. Projects pivot often, so notes there go stale
+almost immediately and nobody goes back to correct them.
+
+- Treat every claim in `research/` as point-in-time. Verify against source before acting on it.
+- Never cite it as authoritative, to the user or in a doc.
+- Don't propose reconciling, refreshing, or de-duplicating it. Staleness is expected, not a defect.
+- Date and title new research: a single note is `YYYYMMDD-<title>.md`; a bundle of related notes gets its own `YYYYMMDD-<title>/` subdirectory. Don't leave entries undated.
+
+When a finding needs to outlive the session that produced it, put it in `map/` (if it
+helps navigate code) or `docs/` (if it's documentation). Not `research/`.
 
 ## Orientation
 
