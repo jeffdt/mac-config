@@ -147,7 +147,7 @@
       "~/r/ami-build-and-cloud-init-scripts"
     ]
   },
-  "model": "opus[1m]",
+  "model": "sonnet",
   "hooks": {
     "Notification": [
       {
@@ -178,6 +178,21 @@
             "type": "command",
             "command": "bash ~/.claude/scripts/tmux-mux-nudge.sh",
             "if": "Bash(tmux *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash ~/.claude/scripts/gh-publish-guard.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_github_github__pull_request_review_write|mcp__plugin_github_github__update_pull_request|mcp__plugin_github_github__create_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/scripts/gh-publish-guard.sh",
             "timeout": 5
           }
         ]
