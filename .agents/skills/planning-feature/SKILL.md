@@ -1,5 +1,6 @@
 ---
 name: planning-feature
+version: 1.1.0
 description: >-
   This skill should be used when the user asks to "plan a feature", says "let's plan...", "plan this
   work", "plan out this feature", or otherwise signals they want to kick off structured feature
@@ -42,42 +43,7 @@ The brainstorming skill will:
 6. Run the spec review loop
 7. **Return control to planning-feature WITHOUT executing the User Review Gate** (per the override above)
 
-**Multi-repo context to inject during brainstorming:**
-- Organize by repo boundary. Flag cross-repo dependencies explicitly. Identify which repo owns each contract.
-- The design spec MUST include a **Target Working Directory** per repo. Use the deepest directory whose subtree contains all planned changes for that repo, capped at service/component granularity:
-  - Monorepos (k-repo): the service directory (e.g. `~/r/k-repo/python/klaviyo/executive_business_report/insights_service`), never deeper into individual subpackages/modules
-  - Component-style repos (fender, app): the component or feature area
-  - When uncertain or work spans the repo broadly: the repo root
-
-  **Why this matters:** Claude Code loads `CLAUDE.md` files and path-scoped skills at session init by traversing up from cwd. Init-time context survives compaction; runtime discovery does not. Launching at the service/component level loads the deepest applicable `CLAUDE.md` plus all ancestors automatically.
-
-  Each repo's section in the design spec should include a `**Target cwd:** <absolute path>` line that the agent records during brainstorming.
-- The design spec MUST include a **Contracts** section defining all cross-repo boundaries:
-  - API request/response schemas (JSON shapes, HTTP methods, status codes)
-  - Event payload schemas
-  - Shared type definitions
-  - Error contracts (error codes, error response format)
-  - Authentication/authorization expectations at boundaries
-- The design spec MUST include a **Testing Strategy** section per repo describing:
-  - How to locally verify the changes work (e.g., run existing test suites, curl an endpoint, trigger an event)
-  - Which cross-repo boundaries need stub/mock services for local testing vs can be tested end-to-end
-  - Any test data setup or environment prerequisites
-  - This section describes the verification APPROACH, not specific test cases or assertions
-- The design spec MUST include an **Observability** section describing what production visibility the feature needs:
-  - New metrics, logs, or traces required (name, dimensions/fields, what question they answer)
-  - Existing instrumentation the feature relies on (and whether it's sufficient)
-  - Cross-repo observability contracts (shared trace IDs, correlation fields, consistent log keys across boundaries)
-  - What on-call needs to see when this fails (alerts, dashboards, log queries)
-  - If genuinely none is needed, a one-line "no new instrumentation; existing X is sufficient" is acceptable and preferred over a fabricated list. The point is forcing the question, not bloating the spec.
-
-**What NOT to include in the design spec:**
-- Exact file paths or function signatures (the repo agent will determine these)
-- Step-by-step implementation instructions
-- Specific test cases, assertion logic, or test file structure (the repo agent determines these; the spec's Testing Strategy covers the approach)
-- Utility or helper choices (the repo agent knows its local toolbox)
-- Specific logger calls, metric client invocations, or log/trace field plumbing (the repo agent knows its local instrumentation libraries; the spec's Observability section covers WHAT to instrument and the cross-repo contract, not HOW)
-
-The spec should describe WHAT each repo needs to do and the contracts it must satisfy, not HOW to implement it.
+**Multi-repo context to inject during brainstorming:** organize by repo boundary, flag cross-repo dependencies, identify which repo owns each contract. The spec must include per-repo Target Working Directory, Contracts, Testing Strategy, and Observability sections, and must exclude implementation-level detail (file paths, function signatures, test cases, logging calls). The Testing Strategy is a testing contract: it must state the minimum evidence needed for each changed behavior or boundary, identify existing coverage that remains sufficient, and justify any end-to-end coverage. Full requirements and rationale: [references/spec-requirements.md](references/spec-requirements.md).
 
 ---
 
@@ -88,7 +54,7 @@ Before the user reviews the spec, run Codex as an adversarial reviewer to surfac
 Invoke (foreground, blocking; the user is waiting for the gate in Step 2.6):
 
 ```bash
-node "$(ls -t ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | head -1)" task --wait --fresh "Review the design spec at <absolute-spec-path>. Adversarially challenge the proposed approach, hidden assumptions, cross-repo contracts, failure modes, rollback/idempotency gaps, and any decisions that seem premature or under-specified. Prioritize issues expensive to fix after implementation begins. Return findings organized by severity (Critical/Important/Suggestion). Do not review it as code; review it as a design artifact."
+node "$(ls -t ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | head -1)" task --wait --fresh "Review the design spec at <absolute-spec-path>. Adversarially challenge the proposed approach, hidden assumptions, cross-repo contracts, failure modes, rollback/idempotency gaps, and any decisions that seem premature or under-specified. Assess whether the testing contracts provide proportionate, non-duplicative evidence for each changed behavior and justify any end-to-end testing. Prioritize issues expensive to fix after implementation begins. Return findings organized by severity (Critical/Important/Suggestion). Do not review it as code; review it as a design artifact."
 ```
 
 `<absolute-spec-path>` is the path recorded in Step 2 (item 5). The codex-companion script is resolved from the plugin cache at invocation time (latest installed version wins, robust to upgrades). Do not substitute `${CLAUDE_PLUGIN_ROOT}` here, that variable is only populated when the harness is invoking a component of the codex plugin itself; this skill runs outside that context.
@@ -139,69 +105,7 @@ Keep it conversational; this is a discussion, not a gate. The user may have cont
 
 ## Step 4: Generate Session Prompts
 
-After the design spec is approved and sequencing is discussed:
-
-1. Create `prompts/` directory if it doesn't exist: `mkdir -p prompts`
-2. Derive the feature slug from the spec filename
-3. Write `prompts/<feature>.md`:
-
-````markdown
-# <Feature Name>: Session Prompts
-
-One prompt per repo. Open a Claude Code session in the target repo and paste.
-
-**Design spec:** `<absolute path to spec>` (use the absolute path from Step 2)
-
----
-
-## 1. <repo> (`<target_cwd>`)
-
-```
-I need to implement the <repo> portion of <feature name>.
-
-Design spec: <absolute path to spec>
-
-<2-4 sentence summary of what THIS repo needs to do, written from the perspective of this repo>
-
-Contracts this repo owns:
-<paste the specific contracts this repo must implement, extracted from the spec's Contracts section>
-
-Contracts this repo consumes:
-<paste contracts from other repos that this repo calls or depends on>
-
-You are already inside a fresh worktree on the correct branch, with cwd set to `<target_cwd>` — do NOT create another worktree, and do NOT cd up. The init-time context for this directory has been loaded. Use /superpowers:writing-plans to create an implementation plan from this spec. Your implementation plan MUST include a local testing plan: what to test, commands to run, manual verification steps, and any mock/stub setup needed for cross-repo dependencies. Do NOT execute the testing plan during implementation; it runs after code review and refactoring have stabilized the code. Your implementation plan MUST also realize the spec's Observability section using this repo's local instrumentation libraries and conventions: emit the metrics/logs/traces the spec calls for, honor any cross-repo correlation fields (e.g., shared trace IDs, request IDs), and flag any observability gap you notice that the spec missed. If the spec says no new instrumentation is needed, confirm by reading the existing instrumentation you'll rely on, and surface any mismatch before implementing.
-
-When writing-plans saves the plan and offers the execution-approach choice, pause before answering. First run Codex adversarial review against the plan:
-
-```bash
-node "$(ls -t ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | head -1)" task --wait --fresh "Review the implementation plan at <absolute-plan-path>. Design spec context: <absolute-spec-path>. Adversarially challenge the planned approach, function signatures, retry/error handling, test coverage gaps, hidden assumptions about the runtime, and any steps that conflict with the spec's contracts. Prioritize issues expensive to fix once code is written. Return findings organized by severity (Critical/Important/Suggestion)."
-```
-
-Both file paths must be absolute. Pass the spec path even though the plan references it; Codex's cross-document reasoning catches contract drift between spec and plan that single-artifact review misses.
-
-Present the plan and Codex's critique together to the user. The user approves, revises, or discards. On revise, update the plan and re-run Codex; loop until approved (no max revisions; the user controls). Do not auto-approve based on Codex's verdict; the user decides. If Codex is unavailable, note "Codex plan review unavailable" and proceed with just the plan.
-
-When writing-plans finishes and asks you to choose an execution approach, pick option 1 (Subagent-Driven). Execute the plan with superpowers:subagent-driven-development: per task, dispatch a fresh implementer, then the spec-compliance reviewer, then the code-quality reviewer, looping on fixes until both reviewers approve before moving on. Do not choose Inline Execution; the two-stage review is the verification floor.
-
-After all tasks pass both reviews, use /gcpr to commit, push, and create a draft PR. Then run /pr:temper to review and refine the PR.
-
-After /pr:temper finishes, use AskUserQuestion to ask whether to monitor CI and address feedback automatically (default: no). If yes: wait for the Buildkite build on the current HEAD to reach a terminal state via `mcp__buildkite__wait_for_build` (if that tool isn't available, fall back to `gh pr checks --watch --interval 60`, re-running if it hits the Bash timeout). Once the build is terminal, run /pr:hospital — it will auto-fix high-confidence CI failures and clear bot feedback, and surface ephemeral/needs-investigation items and debatable feedback for your confirmation.
-```
-
-## 2. <repo2> (`~/r/<repo2>`)
-
-```
-<same structure, different repo-specific content>
-```
-````
-
-Each prompt must be **self-contained**: the repo agent should not need to read other repo prompts or understand the full cross-repo picture. Include enough contract detail inline that the agent can plan and build independently.
-
-Repos listed alphabetically. Use absolute paths for the spec so prompts work when pasted into sessions rooted in different directories.
-
-### Per-Repo Prompt Files
-
-For each repo, also write `prompts/<feature>-<repo>.md` containing ONLY the raw prompt text (no markdown headers, no code fences, no surrounding commentary). These files are piped directly into `claude` as initial input.
+After the design spec is approved and sequencing is discussed, write `prompts/<feature>.md` (one self-contained prompt per repo, repos alphabetical, absolute paths throughout) plus one `prompts/<feature>-<repo>.md` per repo containing just the raw prompt text. Full template and required prompt content: [references/session-prompt-template.md](references/session-prompt-template.md).
 
 ---
 
