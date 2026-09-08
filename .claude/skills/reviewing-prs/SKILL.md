@@ -1,29 +1,33 @@
 ---
-name: pr-review
-description: "Use this agent to review an existing GitHub pull request by PR number. This agent fetches the PR details, analyzes the changes, and provides a comprehensive structured review.\n\n<example>\nContext: User explicitly requests a review of a specific PR by number.\nuser: \"Review PR #123\"\nassistant: \"I'll use the pr-review agent to fetch and review PR #123 from the current repository.\"\n<commentary>\nUser explicitly requested a PR review by number. The pr-review agent fetches PR metadata, diff, and linked tickets to deliver a structured code review.\n</commentary>\n</example>\n\n<example>\nContext: User asks casually about a PR using informal language.\nuser: \"Can you look at pull request 456 and let me know what you think?\"\nassistant: \"I'll launch the pr-review agent to analyze PR #456 and provide a detailed review.\"\n<commentary>\nInformal request for PR feedback still maps to the pr-review agent since the user wants a comprehensive look at the changes.\n</commentary>\n</example>\n\n<example>\nContext: User just pushed their branch and wants feedback before requesting team review.\nuser: \"I just pushed my PR, can you take a look?\"\nassistant: \"I'll find the PR for your current branch and launch the pr-review agent to review it.\"\n<commentary>\nProactive trigger — user doesn't provide a PR number but implies one exists for the current branch. The agent resolves it from the branch name.\n</commentary>\n</example>\n\n<example>\nContext: User wants to know if a PR is ready for merge.\nuser: \"Is PR #789 ready to merge?\"\nassistant: \"Let me use the pr-review agent to do a thorough review and give you a verdict.\"\n<commentary>\nImplicit review request — the user wants a merge readiness assessment, which requires the full structured review to answer properly.\n</commentary>\n</example>"
-model: opus
-tools: Bash, Read, Grep, Glob, WebFetch, Task, mcp__plugin_linear_linear__get_issue, mcp__plugin_github_github__pull_request_read
-color: blue
+name: reviewing-prs
+version: 1.0.0
+description: "Use before reviewing an existing GitHub pull request, checking whether a PR is ready to merge, or responding to requests such as \"review PR #123\", \"look at this pull request\", or \"review the PR for my current branch\". Runs orchestration in the main session and directly dispatches specialized reviewers so the Claude task hierarchy stays at two layers."
 ---
 
-> Generated from ~/.agents/agents/pr-review.md. Do not edit this copy directly.
+> Generated from ~/.agents/skills/reviewing-prs/SKILL.md. Do not edit this copy directly.
 > Edit the source under ~/.agents, then run agents-publish.
 
-You are an expert PR review orchestrator. Your role is to assess PR complexity, then either perform a single-pass inline review (small PRs) or dispatch 3 specialized reviewer subagents in parallel and synthesize their findings into a unified report (medium/large PRs).
+# Reviewing Pull Requests
+
+Run this workflow in the main conversation. Do not launch a `pr-review` agent or delegate orchestration to another agent. Assess PR complexity, directly dispatch 3 specialized reviewer subagents for medium/large PRs, and synthesize their findings. This keeps the Claude task hierarchy to two layers: main session → specialized reviewers.
+
+**Resolve the PR:**
+
+- If the user supplied a PR number or URL, use it.
+- Otherwise, find PRs for the current branch with `gh pr list --head "$(git branch --show-current)"`.
+- If exactly one PR is found, use it. If multiple PRs are found, ask which one to review. If none are found, report that and stop.
 
 **Step 1 — Fetch PR Data**
 
 Determine the repository owner and name from `gh repo view --json owner,name` (or from context if already known).
 
-Gather all PR information using `mcp__plugin_github_github__pull_request_read` with these methods in parallel:
+Gather the PR information concurrently, following the `github-pr-routing` skill:
 
-1. `method: "get"` — full PR metadata (title, body, state, author, labels, branches, etc.)
-2. `method: "get_diff"` — the complete diff
-3. `method: "get_check_runs"` — CI check status
-4. `method: "get_review_comments"` — review threads with resolution status
-5. `method: "get_comments"` — general PR comments (bot and human)
-
-All calls take `owner`, `repo`, `pullNumber`, and `method`. Use `perPage: 100` to minimize pagination.
+1. `gh pr view <number> --json number,url,title,body,state,author,labels,headRefName,baseRefName,files,additions,deletions` — metadata and changed-file summary
+2. `gh pr diff <number>` — complete diff
+3. `gh pr checks <number>` — CI status
+4. `gh pr view <number> --comments` — general PR comments
+5. `mcp__plugin_github_github__pull_request_read` with `method: "get_review_comments"` and `perPage: 100` — threaded review comments with resolution status
 
 **Step 2 — Extract and Fetch Ticket**
 
@@ -69,7 +73,7 @@ Read all 3 reviewer prompt files from `/Users/jeff.diteodoro/.agents/agent-promp
 
 **Step 6 — Dispatch Specialized Reviewers (Including Codex)**
 
-Launch 4 parallel review sources in a single response so they run concurrently:
+Launch 4 parallel review sources directly from the main session in a single response so they run concurrently:
 
 - 3 Claude Task subagents using `subagent_type: "general-purpose"` (Meta, Code Quality, Security & Performance); each prompt combines the reviewer's instructions with the relevant PR context.
 - 1 Codex review via Bash, invoking the codex-companion runtime against the branch diff:
@@ -86,8 +90,8 @@ Mix Bash and Task tool calls in the same parallel response. Claude Code will exe
 
 | PR Complexity | Meta | Code Quality | Security & Performance | Codex | Synthesizer |
 |---|---|---|---|---|---|
-| Medium | sonnet | sonnet | sonnet | (default) | opus (you) |
-| Large | sonnet | opus | opus | (default) | opus (you) |
+| Medium | sonnet | sonnet | sonnet | (default) | current main-session model |
+| Large | sonnet | opus | opus | (default) | current main-session model |
 
 Set the `model` parameter on each Task accordingly. Meta always uses `sonnet`. Codex uses its built-in review model. Pass no model flag.
 
@@ -102,6 +106,8 @@ Each Task prompt should be structured as:
 ```
 [Paste the reviewer prompt file content here]
 
+Do not launch subagents. Perform this review yourself and return your findings directly to the parent session.
+
 ---
 
 ## PR Context
@@ -109,7 +115,7 @@ Each Task prompt should be structured as:
 [Paste the relevant context here]
 ```
 
-Launch all 3 Tasks AND the Codex Bash call in a single message so they run in parallel.
+Launch all 3 Tasks AND the Codex Bash call directly from the main session in a single message so they run in parallel.
 
 **Step 7 — Synthesize Unified Report**
 
@@ -214,3 +220,16 @@ Summary: [2-3 sentences with clear next steps]
 - If everything looks good, say so — do not invent problems
 - Use file:line references for all code-specific findings
 - **Prefix codes are non-negotiable.** Every item under Critical, Important, Suggestions, and Notes MUST start with its `[C#]`, `[I#]`, `[S#]`, or `[N#]` tag. This is how the user references items in followup conversation; a review missing these IDs is a defective review. Before emitting the final report, scan every bullet in these sections and confirm each one has its prefix. If you catch a missing or wrong prefix, fix it before sending.
+
+
+## Smoke Test Offer
+
+After presenting the review report, ask whether the user wants to smoke test the changes. If they decline, stop.
+
+If they accept:
+
+1. Re-read the PR description and briefly assess what its test plan covers, what it misses, and whether any steps are stale or could pass despite a regression. If there is no test plan, say so.
+2. Build a focused smoke-test plan covering the golden path and identified gaps. For each step, state the action, expected result, and why it matters.
+3. Ask the user to approve or adjust that plan before execution.
+4. Run automatable steps directly. Guide the user through manual steps and record their reported results.
+5. Summarize steps passed and failed, observed versus expected behavior, any new issues, and whether the results change the review verdict.

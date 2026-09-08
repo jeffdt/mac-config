@@ -1,5 +1,6 @@
 ---
 name: github-pr-routing
+version: 1.0.0
 description: This skill should be used when performing any GitHub PR operation in the main conversation — creating, reading, updating, reviewing, or commenting on pull requests. Routes operations to gh CLI (when a native subcommand exists) or GitHub MCP (when it doesn't). Also use when tempted to reach for gh api, which is hard-denied in permissions.
 ---
 
@@ -44,4 +45,4 @@ MCP tools require `owner` and `repo` parameters. Derive once from `gh repo view 
 
 ## Scope
 
-Main conversation only. Subagents (pr-review, pr-feedback-triage, pr-feedback-qa) have their own routing and should not be changed.
+Main conversation only. The `pr-feedback-triage` and `pr-feedback-qa` subagents have their own routing and should not be changed. PR review orchestration now runs in the main conversation and follows this skill.

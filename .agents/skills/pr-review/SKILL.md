@@ -1,9 +1,13 @@
 ---
-description: "Review an existing GitHub PR by number, URL, or current branch"
-allowed-tools: Skill, Bash, Read, Grep, Glob, Task, AskUserQuestion, mcp__plugin_linear_linear__*, mcp__plugin_github_github__pull_request_read
+name: pr-review
+version: 1.0.0
+description: "Use when the user invokes $pr-review or /pr-review, or asks to review an existing GitHub PR by number, URL, or current branch"
 ---
 
-<!-- Generated from ~/.agents/workflows/pr-review.md. Do not edit this copy directly. -->
+> Generated from ~/.agents/workflows/pr-review.md. Do not edit this copy directly.
+> Edit the workflow source under ~/.agents, then run agents-publish.
+
+# pr-review
 
 Apply the `reviewing-prs` skill for the underlying workflow.
 
