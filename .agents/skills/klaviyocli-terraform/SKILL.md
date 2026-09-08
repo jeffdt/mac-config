@@ -1,12 +1,16 @@
 ---
 name: klaviyocli-terraform
-version: 1.0.0
-description: This skill should be used when the user asks to "run terraform plan", "run terraform apply", "plan this module", "apply terraform changes", "check drift", "fix drift", "clear state lock", "force unlock", or when working with infrastructure-as-code in infrastructure-deployment or terraform repos. Handles AWS authentication and environment selection automatically via klaviyocli.
+version: 2.0.0
+description: This skill should be used when the user asks to "run terraform plan", "plan this module", "check drift", "fix drift", "clear state lock", "force unlock", or when working with infrastructure-as-code in infrastructure-deployment or terraform repos. Handles AWS authentication and environment selection automatically via klaviyocli. Also fires when the user asks how to "apply" terraform changes — the answer is always to merge the PR, never to run apply directly.
 ---
 
 # Klaviyocli Terraform
 
 The `klaviyocli terraform` command wraps Terraform with Klaviyo-specific authentication, environment selection, and state management. Run from the root of the infrastructure-deployment repo.
+
+**Applies never happen manually.** All `apply`s land via Spacelift when the PR merges — that's the whole workflow: plan locally to preview, open the PR, merge, let Spacelift apply. Never run `klaviyocli terraform apply` yourself, and never propose it as a step, even when a user asks "how do I apply this" — point them to merging the PR instead. Use the `spacelift-verify` skill after merge to confirm the run applied cleanly.
+
+For less common operations — `destroy`, `import`, `taint`, `clear-lock`, `force-unlock`, drift sharing, `root-variables`, `prepare-plans`, `audit-all`, and troubleshooting — see [references/command-reference.md](references/command-reference.md).
 
 ## Module Path Convention (Critical)
 
@@ -25,11 +29,8 @@ klaviyocli terraform plan prod infrastructure/live/prod/machine_roles/amplify-cs
 ## Quick Reference
 
 ```bash
-# Plan changes
+# Plan changes (preview only — merging the PR is what applies)
 klaviyocli terraform plan <env> <module>
-
-# Apply changes (after plan)
-klaviyocli terraform apply <env> <module>
 
 # Check drift
 klaviyocli terraform drift list <env>
@@ -39,29 +40,11 @@ klaviyocli terraform drift get <env> <module>
 klaviyocli terraform validate <env> <module>
 ```
 
-## AWS Environments
-
-Common environments (use the appropriate one for your module):
-
-| Environment | Description |
-|-------------|-------------|
-| `prod` | Production |
-| `eng` | Engineering/staging |
-| `dev` | Development |
-| `security_logging` | Security logging |
-| `secops` | Security operations |
-| `it` | IT infrastructure |
-| `bi` | Business intelligence |
-| `prodnet` | Production networking |
-| `prod_euc1` | Production EU (euc1) |
-
-Use `klaviyocli terraform plan --help` to see the full list of available environments.
-
 ## Core Commands
 
 ### `plan`
 
-Generate an execution plan showing what changes Terraform will make.
+Generate an execution plan showing what changes Terraform will make. This is the only step that runs before opening a PR — the plan is for review, not for staging an apply you'll run yourself.
 
 ```bash
 klaviyocli terraform plan <env> <module>
@@ -85,66 +68,12 @@ klaviyocli terraform plan prod api/my-service --ttl 2  # 2-hour session
 - `--quiet` - Suppress custom output
 - `--no-color` - Disable color output
 
-### `apply`
-
-Apply changes from a previously generated plan file (tf.plan).
-
-```bash
-klaviyocli terraform apply <env> <module>
-
-# Examples
-klaviyocli terraform apply prod machine_roles/amplify-cs/iam_machine_roles
-klaviyocli terraform apply eng rds/my-database --parallelism 20
-```
-
-**Options:**
-- `--elevated` - Use TeamElevated AWS IAM role
-- `--parallelism INTEGER` - Parallelism for operations (default: 10, increase for bulk RDS operations)
-- `--lock / --nolock` - Enable/disable state locking (use with caution)
-
 ### `validate`
 
 Validate Terraform configuration syntax and internal consistency.
 
 ```bash
 klaviyocli terraform validate <env> <module>
-```
-
-### `destroy`
-
-Destroy a specific Terraform-managed resource.
-
-```bash
-klaviyocli terraform destroy <env> <module> <resource>
-
-# Example
-klaviyocli terraform destroy prod api/my-service aws_instance.old_server
-```
-
-### `import`
-
-Import existing infrastructure into Terraform state.
-
-```bash
-klaviyocli terraform import <env> <module> <address> <id>
-
-# Example
-klaviyocli terraform import prod api/my-service aws_instance.web i-1234567890abcdef0
-```
-
-**Options:**
-- `--var TEXT` - Set a variable (can use multiple times)
-- `--var-file TEXT` - Load variables from file
-
-### `taint`
-
-Mark a resource as tainted (will be destroyed/recreated on next apply).
-
-```bash
-klaviyocli terraform taint <env> <module> <resource>
-
-# Example
-klaviyocli terraform taint prod api/my-service aws_instance.web
 ```
 
 ## Drift Detection
@@ -182,113 +111,19 @@ klaviyocli terraform drift get <env> <module>
 klaviyocli terraform drift get prod api/my-service
 ```
 
-### `drift get-shared-drift`
-
-Check drift in modules that share a common submodule.
-
-```bash
-klaviyocli terraform drift get-shared-drift <env> <submodule>
-```
-
-### `drift refresh-shared-drift`
-
-Refresh drift for modules sharing a submodule.
-
-```bash
-klaviyocli terraform drift refresh-shared-drift <env> <submodule>
-```
-
-## State Management
-
-### `clear-lock`
-
-Clear a stale DynamoDB lock for a statefile.
-
-```bash
-klaviyocli terraform clear-lock <env> <statefile_key>
-
-# The statefile_key is the S3 key from the module's backend configuration
-```
-
-### `force-unlock`
-
-Remove the state lock for the current configuration.
-
-```bash
-klaviyocli terraform force-unlock <env> <module>
-```
-
-## Module Management
-
-### `list-root-modules`
-
-List root modules that use a given submodule.
-
-```bash
-klaviyocli terraform list-root-modules <env> <submodule_path>
-
-# Example - find all modules using a shared submodule
-klaviyocli terraform list-root-modules prod rds-instance
-```
-
-### `root-variables`
-
-Manage variables stored in AWS Secrets Manager for root modules.
-
-```bash
-# List variables
-klaviyocli terraform root-variables list <env> <module>
-
-# Create variable
-klaviyocli terraform root-variables create <env> <module> <name> <value>
-
-# Update variable
-klaviyocli terraform root-variables update <env> <module> <name> <value>
-
-# Delete variable
-klaviyocli terraform root-variables delete <env> <module> <name>
-
-# Restore deleted variable
-klaviyocli terraform root-variables restore <env> <module> <name>
-
-# Add team access
-klaviyocli terraform root-variables add-additional-team <env> <module> <team>
-```
-
-## Utility Commands
-
-### `prepare-plans`
-
-Output or execute plan commands for modules with modified files (compared to master).
-
-```bash
-# Show plan commands for modified modules
-klaviyocli terraform prepare-plans
-
-# Execute plans for all modified modules
-klaviyocli terraform prepare-plans --execute
-```
-
-### `audit-all`
-
-Verify all .tf files have correct team names in their configuration.
-
-```bash
-klaviyocli terraform audit-all
-```
+For shared-submodule drift, `root-variables`, `prepare-plans`, and other less common operations, see [references/command-reference.md](references/command-reference.md).
 
 ## Common Workflows
 
 ### 1. Make Infrastructure Changes
 
 ```bash
-# 1. Plan changes
+# 1. Plan changes to preview them
 klaviyocli terraform plan prod api/my-service
 
 # 2. Review the plan output carefully
 
-# 3. Apply if plan looks correct
-klaviyocli terraform apply prod api/my-service
+# 3. Open a PR with the change and merge it — Spacelift applies automatically
 ```
 
 ### 2. Save Plan Output to a File
@@ -310,62 +145,12 @@ klaviyocli terraform drift get prod api/my-service
 # 3. Plan to see what would change
 klaviyocli terraform plan prod api/my-service
 
-# 4. Apply to fix drift
-klaviyocli terraform apply prod api/my-service
-```
-
-### 4. Plan Modified Modules in a Branch
-
-```bash
-# See which modules need planning based on git changes
-klaviyocli terraform prepare-plans
-
-# Run all plans
-klaviyocli terraform prepare-plans --execute
-```
-
-### 5. Handle State Lock Issues
-
-```bash
-# If a plan/apply fails due to stale lock
-klaviyocli terraform clear-lock <env> <statefile_key>
-
-# Or use force-unlock for the current module
-klaviyocli terraform force-unlock <env> <module>
+# 4. Open a PR reconciling the drift — merge it, Spacelift applies
 ```
 
 ## Best Practices
 
-1. **Always plan before apply** - Review the plan output carefully before applying
+1. **Always plan before opening a PR** - Review the plan output carefully; the PR merge is what applies it
 2. **Use `--elevated` sparingly** - Only when standard permissions are insufficient
 3. **Check drift regularly** - Use `drift list -d` to find modules needing attention
-4. **Use `prepare-plans`** - Before PRs, run this to identify affected modules
-5. **Target specific resources** - Use `-t` flag when making targeted changes
-6. **Handle parallelism carefully** - Increase for bulk operations, but not for autoscaling resources
-
-## Troubleshooting
-
-### Authentication Errors
-- Ensure you're connected to the VPN
-- Try running with `--elevated` if you need additional permissions
-- Check your AWS session hasn't expired (use `--ttl` to extend)
-
-### State Lock Errors
-- First, verify no one else is running terraform on the same module
-- Use `clear-lock` or `force-unlock` only if the lock is truly stale
-
-### Drift Detection Issues
-- Check the `last_task` ID in drift output to view ICA task details
-- Use `klaviyocli ica <env> task get -t <task_id>` to investigate
-
-## Getting Help
-
-```bash
-# Main help
-klaviyocli terraform --help
-
-# Command-specific help
-klaviyocli terraform plan --help
-klaviyocli terraform drift --help
-klaviyocli terraform root-variables --help
-```
+4. **Target specific resources** - Use `-t` flag when making targeted changes

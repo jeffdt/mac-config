@@ -13,6 +13,9 @@ The publisher validates sources, writes target files atomically, and records gen
 ## Canonical sources
 
 - `skills/`: Agent Skills standard skills. Pi reads this directory directly, and the publisher also renders Claude copies.
+- `workflows/`: Canonical manual workflow aliases. The publisher renders each one as a Claude slash command and a small Codex skill wrapper; the wrapper delegates to the named core skill.
+
+For a generated workflow, use the Claude command named by `claude_command` (for example `/pr:draft`) or the Codex skill name (for example `$pr-draft`).
 - `agents/`: Source agent prompts. The publisher renders Claude agents and Pi subagents from these files.
 - `agent-prompts/`: Shared prompt fragments used by agents.
 - `scripts/`: Shared helper scripts used by skills and agents.
@@ -20,6 +23,7 @@ The publisher validates sources, writes target files atomically, and records gen
 ## Generated targets
 
 - `~/.claude/skills/`
+- `~/.claude/commands/` (workflow-generated commands only)
 - `~/.claude/agents/`
 - `~/.claude/agent-prompts/`
 - `~/.claude/scripts/`

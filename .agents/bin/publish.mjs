@@ -7,11 +7,13 @@ import { isMap, parseDocument } from "yaml";
 const HOME = homedir();
 const ROOT_DIR = join(HOME, ".agents");
 const SOURCE_SKILLS_DIR = join(ROOT_DIR, "skills");
+const SOURCE_WORKFLOWS_DIR = join(ROOT_DIR, "workflows");
 const SOURCE_AGENTS_DIR = join(ROOT_DIR, "agents");
 const SOURCE_AGENT_PROMPTS_DIR = join(ROOT_DIR, "agent-prompts");
 const SOURCE_SCRIPTS_DIR = join(ROOT_DIR, "scripts");
 
 const CLAUDE_SKILLS_DIR = join(HOME, ".claude", "skills");
+const CLAUDE_COMMANDS_DIR = join(HOME, ".claude", "commands");
 const CLAUDE_AGENTS_DIR = join(HOME, ".claude", "agents");
 const CLAUDE_AGENT_PROMPTS_DIR = join(HOME, ".claude", "agent-prompts");
 const CLAUDE_SCRIPTS_DIR = join(HOME, ".claude", "scripts");
@@ -78,6 +80,11 @@ function readJson(path, fallback) {
 function writeFileAtomic(path, data, mode = 0o644, dryRun = false) {
   if (dryRun) return;
   mkdirSync(dirname(path), { recursive: true });
+  try {
+    if (readFileSync(path, "utf8") === data) return;
+  } catch (error) {
+    if (!isNodeError(error, "ENOENT")) throw error;
+  }
   const tempPath = join(dirname(path), `.${basename(path)}.${process.pid}.${Date.now()}.tmp`);
   try {
     writeFileSync(tempPath, data, { mode });
@@ -352,6 +359,7 @@ function publishTextFile(sourcePath, targetPath, text, result, dryRun) {
 /** Publishes a directory tree with optional SKILL.md generated notices. */
 function publishTree(sourceDir, targetDir, result, options) {
   for (const sourcePath of walkFiles(sourceDir)) {
+    if (options.exclude?.(sourcePath)) continue;
     const targetPath = join(targetDir, relative(sourceDir, sourcePath));
     result.files.push(targetPath);
     result.written += 1;
@@ -394,6 +402,79 @@ function validateEntry(sourcePath, errors) {
   }
 }
 
+/** Validates a canonical workflow and its target metadata. */
+function validateWorkflow(sourcePath, errors) {
+  const frontmatter = parseFrontmatter(sourcePath, readFileSync(sourcePath, "utf8"), errors);
+  if (!frontmatter) return;
+
+  for (const key of ["name", "description", "skill", "claude_command"]) {
+    if (typeof frontmatter[key] !== "string" || !frontmatter[key].trim()) {
+      errors.push(`${displayPath(sourcePath)} is missing frontmatter ${key}`);
+    }
+  }
+
+  for (const key of ["name", "skill"]) {
+    if (typeof frontmatter[key] === "string" && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(frontmatter[key])) {
+      errors.push(`${displayPath(sourcePath)} frontmatter ${key} must be lowercase kebab-case`);
+    }
+  }
+
+  if (typeof frontmatter.claude_command === "string" && !/^[a-z0-9-]+(?:\/[a-z0-9-]+)*$/.test(frontmatter.claude_command)) {
+    errors.push(`${displayPath(sourcePath)} frontmatter claude_command must be a lowercase command path`);
+  }
+}
+
+/** Renders a workflow as an explicit Codex-invokable skill wrapper. */
+function renderCodexWorkflow(sourcePath, options = {}) {
+  const raw = readFileSync(sourcePath, "utf8");
+  const parsed = parseMarkdown(raw);
+  const frontmatter = parseFrontmatter(sourcePath, raw, []);
+  const name = frontmatter.name;
+  const description = `Use when the user invokes $${name} or /${name}, or asks to ${frontmatter.description.charAt(0).toLowerCase()}${frontmatter.description.slice(1)}`;
+
+  return [
+    "---",
+    `name: ${name}`,
+    "version: 1.0.0",
+    `description: ${JSON.stringify(description)}`,
+    "---",
+    "",
+    ...(options.includeNotice === false ? [] : [
+      `> Generated from ${displayPath(sourcePath)}. Do not edit this copy directly.`,
+      "> Edit the workflow source under ~/.agents, then run agents-publish.",
+      "",
+    ]),
+    `# ${name}`,
+    "",
+    `Apply the \`${frontmatter.skill}\` skill for the underlying workflow.`,
+    "",
+    parsed.body.trim(),
+    "",
+  ].join("\n");
+}
+
+/** Renders a workflow as a Claude slash command that delegates to its core skill. */
+function renderClaudeWorkflow(sourcePath) {
+  const raw = readFileSync(sourcePath, "utf8");
+  const parsed = parseMarkdown(raw);
+  const frontmatter = parseFrontmatter(sourcePath, raw, []);
+  const allowedTools = typeof frontmatter.claude_allowed_tools === "string" ? frontmatter.claude_allowed_tools : "Skill";
+
+  return [
+    "---",
+    `description: ${JSON.stringify(frontmatter.description)}`,
+    `allowed-tools: ${allowedTools}`,
+    "---",
+    "",
+    `<!-- Generated from ${displayPath(sourcePath)}. Do not edit this copy directly. -->`,
+    "",
+    `Apply the \`${frontmatter.skill}\` skill for the underlying workflow.`,
+    "",
+    parsed.body.trim(),
+    "",
+  ].join("\n");
+}
+
 /** Validates canonical skill and agent entry files before publishing. */
 function validateSources() {
   const errors = [];
@@ -404,6 +485,10 @@ function validateSources() {
 
   for (const agentFile of walkFiles(SOURCE_AGENTS_DIR).filter((path) => path.endsWith(".md"))) {
     validateEntry(agentFile, errors);
+  }
+
+  for (const workflowFile of walkFiles(SOURCE_WORKFLOWS_DIR).filter((path) => path.endsWith(".md"))) {
+    validateWorkflow(workflowFile, errors);
   }
 
   return errors;
@@ -418,9 +503,44 @@ function publishAll(options) {
     targets: {},
   };
   const counts = {};
+  const workflowFiles = walkFiles(SOURCE_WORKFLOWS_DIR).filter((path) => path.endsWith(".md"));
+  const workflowSkillPaths = new Set(
+    workflowFiles.map((sourcePath) => {
+      const frontmatter = parseFrontmatter(sourcePath, readFileSync(sourcePath, "utf8"), []);
+      return join(SOURCE_SKILLS_DIR, frontmatter.name, "SKILL.md");
+    }),
+  );
 
+  const codexWorkflowSkills = { files: [], written: 0 };
+  const claudeCommands = { files: [], written: 0 };
+  for (const sourcePath of workflowFiles) {
+    const frontmatter = parseFrontmatter(sourcePath, readFileSync(sourcePath, "utf8"), []);
+    publishTextFile(sourcePath, join(SOURCE_SKILLS_DIR, frontmatter.name, "SKILL.md"), renderCodexWorkflow(sourcePath), codexWorkflowSkills, options.dryRun);
+    publishTextFile(sourcePath, join(CLAUDE_COMMANDS_DIR, `${frontmatter.claude_command}.md`), renderClaudeWorkflow(sourcePath), claudeCommands, options.dryRun);
+  }
+  manifest.targets.codexWorkflowSkills = codexWorkflowSkills.files;
+  counts.codexWorkflowSkills = codexWorkflowSkills.written;
+  manifest.targets.claudeCommands = claudeCommands.files;
+  counts.claudeCommands = claudeCommands.written;
+
+  // Generate workflow wrappers before copying skills so both Codex and Claude
+  // receive the same just-rendered skill in this publish run.
   const claudeSkills = { files: [], written: 0 };
-  publishTree(SOURCE_SKILLS_DIR, CLAUDE_SKILLS_DIR, claudeSkills, { dryRun: options.dryRun, noticeForSkillMarkdown: true });
+  publishTree(SOURCE_SKILLS_DIR, CLAUDE_SKILLS_DIR, claudeSkills, {
+    dryRun: options.dryRun,
+    noticeForSkillMarkdown: true,
+    exclude: (sourcePath) => workflowSkillPaths.has(sourcePath),
+  });
+  for (const sourcePath of workflowFiles) {
+    const frontmatter = parseFrontmatter(sourcePath, readFileSync(sourcePath, "utf8"), []);
+    publishTextFile(
+      sourcePath,
+      join(CLAUDE_SKILLS_DIR, frontmatter.name, "SKILL.md"),
+      withGeneratedNotice(renderCodexWorkflow(sourcePath, { includeNotice: false }), sourcePath),
+      claudeSkills,
+      options.dryRun,
+    );
+  }
   manifest.targets.claudeSkills = claudeSkills.files;
   counts.claudeSkills = claudeSkills.written;
 
@@ -461,7 +581,7 @@ function publishAll(options) {
 
 /** Prints command usage. */
 function printHelp() {
-  console.log(`Usage: agents-publish [--check] [--dry-run] [--no-prune]\n\nPublishes ~/.agents canonical skills, agents, scripts, and prompt assets to Claude and Pi target directories.\n\nOptions:\n  --check     Validate canonical sources without writing files\n  --dry-run   Show what would be published without writing files\n  --no-prune  Do not remove files owned by an older publish manifest\n  --help      Show this help`);
+  console.log(`Usage: agents-publish [--check] [--dry-run] [--no-prune]\n\nPublishes ~/.agents canonical skills, workflows, agents, scripts, and prompt assets to Claude and Pi target directories.\n\nOptions:\n  --check     Validate canonical sources without writing files\n  --dry-run   Show what would be published without writing files\n  --no-prune  Do not remove files owned by an older publish manifest\n  --help      Show this help`);
 }
 
 /** Main CLI entrypoint. */
@@ -494,6 +614,8 @@ function main() {
     const prefix = dryRun ? "Would publish" : "Published";
     console.log(`${prefix}:`);
     console.log(`- Claude skills: ${result.counts.claudeSkills}`);
+    console.log(`- Codex workflow skills: ${result.counts.codexWorkflowSkills}`);
+    console.log(`- Claude commands: ${result.counts.claudeCommands}`);
     console.log(`- Claude agents: ${result.counts.claudeAgents}`);
     console.log(`- Claude agent prompts: ${result.counts.claudeAgentPrompts}`);
     console.log(`- Claude scripts: ${result.counts.claudeScripts}`);

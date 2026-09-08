@@ -1,142 +1,77 @@
 ---
 name: jeff-github-review-voice
-description: "This skill should be used when the user asks to 'draft a review comment', 'draft a comment for point N', 'write a review comment for', or 'draft PR feedback'. Drafts GitHub PR inline review comments in Jeff's voice. Do not use for general writing, Slack messages, or PR descriptions."
+version: 2
+description: "Use when the user asks to draft an inline GitHub PR review comment or feedback for a specific review finding. Write a short, natural teammate-to-teammate comment in Jeff's voice. Do not use for general writing, Slack messages, or PR descriptions."
 ---
 
 # GitHub Review Voice
 
-Draft inline PR review comments that match Jeff's tone, framing, and structure.
+Draft the comment Jeff would actually type after noticing the issue. The goal is not an identifiable “voice”; it is a clear, specific note that sounds like a thoughtful teammate, not a review template.
 
-## The #1 Rule: The Reader Knows Their Code
+## Core approach
 
-Jeff reviews code written by extremely smart engineers. His posture is respect for their craft; he's helping catch edge cases they may have missed, not teaching them their own codebase. This means:
+- Keep the technical point intact. Do not replace it with generic approval language or a vague prompt.
+- State the relevant failure mode when it makes the ask clearer. Omit background the author already knows.
+- Make one concrete ask or observation per comment.
+- Use the shortest shape that still says what matters. Most comments are one or two sentences.
+- Read the result aloud once. If it sounds like a stock code-review phrase, rewrite it as something a person would say in a conversation.
 
-- **Don't explain the problem.** Just surface it. The author will understand the implications.
-- **Don't justify suggestions.** Drop the "because X" reasoning. If the suggestion is good, it speaks for itself.
-- **Suggest an action, not just a concern.** Instead of "entries will just accumulate," say "maybe worth rebasing and testing once X merges." Practical next steps over theoretical warnings.
-- **Severity is implicit in tone.** A question framing already signals "this is a suggestion, not a demand." Explicit "not a blocker" is rarely needed.
+## Avoid manufactured mannerisms
 
-The most common failure mode is writing too much. When in doubt, cut.
+Do not use a phrase merely because it appears in an example. In particular, do not default to, repeat, or open a comment with:
 
-A reliable test: cross out every sentence in your draft that describes what the author's code already does. What's left — the actionable ask — is the whole comment. If nothing is left, you don't have a comment yet; keep thinking.
+- “Could …”
+- “Probably want …”
+- “Worth …?”
+- “Thoughts on …?”
+- “Any concerns …?”
+- “Nit:”
 
-**Anti-pattern (Claude's default):**
+Those are occasionally useful when they genuinely fit the point, but they are not a voice. Do not use `tbqh`, “maybe a dumb Q,” emojis, or self-deprecation unless the user specifically supplies that tone or context.
 
-> _make_html_design_tool is ~190 lines doing S3 memoization + prior-html resolution + sub-agent invocation + dual-event SSE plumbing + exception mapping. The generate_file event pair is load-bearing b/c the frontend listens for it specifically, but that coupling isn't obvious here. Thoughts on pulling the file-event plumbing into an _emit_file_generation_events helper so the main body reads as resolve → run → emit → return?
+Do not follow artificial quotas for questions. Use a question only when you need information from the author. Otherwise, write a normal observation and a natural suggestion.
 
-**What Jeff actually posted:**
+## Shape the comment around the finding
 
-> Thoughts on pulling the file-event plumbing into an _emit_file_generation_events helper so the main body reads as resolve → run → emit → return?
+Use the finding's real language and name the code under discussion. Avoid explaining the entire diff back to its author.
 
-Just the suggestion. No preamble explaining what the function does (the author wrote it). No justification for why it would help (it's obvious).
+For a test gap, say what the test currently fails to prove, then name the smallest useful test change. For example:
 
-**Same principle, different shape — don't restate what their tests do:**
+> This mocks `TracingInterceptor` itself, so the test would still pass if the `Client.connect()` call stopped accepting it. Can we assert on the real interceptor instance and its `always_create_workflow_spans` value instead?
 
-> ❌ The cross-company case mocks out get_stat_by_id_or_none, so this really only verifies fetcher returns None → tool_error. The actual company filtering lives inside the fetcher and nothing in the suite exercises it. Could add a test using the real fetcher with a statistic that belongs to another company.
->
-> ✅ Can we easily add a test that tries to get a statistic that belongs to another company where the helper isn't mocked out?
+For a behavior concern, state the condition and result, then ask for or suggest the resolution:
 
-Same lesson: the author wrote the mocks, the structure, the logic. Three sentences describing it back to them reads as condescending. Trust that they know; just ask the actionable thing.
+> If a conversation switch does not reset this map, entries will accumulate. We should rebase once history lands and test that path.
 
-## Voice Rules
+For a small code-quality suggestion, make the observation without treating it like a command:
 
-### Framing: Declarative by Default
+> The leading underscore is misleading since these get imported. I think we should drop it.
 
-**The dominant failure mode is question-stuffing.** "Worth X?" and "Thoughts on Y?" are crutches — they feel polite but stack up as passive-aggressive when every comment uses them. A reviewer who asks 5 questions in a row reads as performing uncertainty, not collaborating.
+For a true unknown, ask plainly:
 
-Default to flat declaratives. State the observation, then the suggestion, as facts. The author knows it's a suggestion because of who you are and where it appears — you don't need to dress it up as a question.
+> Is this duplicate line an accident?
 
-A useful test: if you can drop the leading "Worth" or "Thoughts on" and trailing "?" and the comment still reads as a polite suggestion, do it. It almost always does.
+## Severity and formatting
 
-**Before → after:**
-
-- ❌ "Worth pulling the 300 into a named constant?"
-- ✅ "Nit: pull the 300 into a named constant."
-
-- ❌ "Worth datetime.now(timezone.utc).replace(tzinfo=None) here?"
-- ✅ "Probably want datetime.now(timezone.utc).replace(tzinfo=None) here."
-
-- ❌ "Thoughts on dropping the leading underscore since these get imported?"
-- ✅ "The leading underscore is misleading since these get imported. Could drop it."
-
-- ❌ "Thoughts on pulling X into a shared module?"
-- ✅ "Could pull X into a shared module so neither side has to defer."
-
-Framings, in priority order:
-
-- **Declarative suggestion** (default): "Probably want X here.", "Could pull this into a helper.", "Nit: pull the 300 into a constant.", "+1 to hardcoding the check", "The leading underscore is misleading."
-- **Conditional / consequence-first** (when motivation needs stating): "If X happens, this list goes stale. Worth a line saying...", "Host-local TZ + a 1-month lag means the default window can drift."
-- **Flat observation** (when something just needs flagging): "is this duplicate line an accident?", "This means it's optional, right?" — questions in form, but really just pointing.
-- **Genuine question** (rare): "Any reason not to...?", "Should we...?" — reserve for when you actually need the author's reasoning, not as a politeness wrapper. **Cap: at most one per review draft.** If you're drafting a batch of 5 comments, no more than 1 should end with a real "?".
-- **First-person uncertainty** when real: "I was wondering", "I'm curious whether", "I didn't know X did Y."
-
-Other rules:
-- Lead with the observation; let suggestions follow.
-- Never issue directives: no "change this to X", "you should do Y", "please fix Z". Declarative ≠ commanding — "Could drop it" is declarative; "Drop it" is a directive.
-- When drafting in a batch (e.g. after `/pr:review`), look at the set together: if more than 1 ends in "?", rewrite the rest as declaratives before showing the user.
-
-### Register
-
-- Casual throughout: use contractions, abbreviations (w/, prob, Q, tbqh)
-- Sparse emoji: only for genuine reactions, never decorative
-- No formality fluff: no "Great work overall!", no "Thanks for putting this together!", no hedging preambles like "Happy to leave it out if there's a reason"
-- No emotional hedging: no "worried", "concerned", "afraid". Just ask the question flat.
-- Acknowledge good work naturally when warranted: "Nice catch, thank you!", "Pretty sweet", "Oh thats a good call", "So good."
-
-### Severity Signaling
-
-- Severity is usually implicit in the framing itself: "maybe worth X", "you could consider Y", "+1 to Z" all read as suggestions without needing a "?" or a "not a blocker" disclaimer
-- "Nit:" prefix for trivial things (the one explicit severity marker used regularly)
-- Explicit non-blocker language ("Not necessarily a blocker") only when the concern could genuinely be misread as blocking
-- Most of the time, the tone does the work; don't over-label
-
-## Comment Structure
-
-Pick the structure that fits the severity:
-
-**Nit** — One sentence, "Nit:" prefix. May include a GitHub suggestion block.
-
-**Suggestion** — Observation + question. May include a code snippet or suggestion block.
-
-**Technical concern** — Observation, numbered options with trade-offs, explicit severity signal at the end.
-
-**Test gap** — Positive lead ("Nice coverage of..."), then specific gaps as suggestions.
-
-## Code in Comments
-
-Pick the tier that communicates most concisely:
-
-1. **GitHub suggestion block** (` ```suggestion `): simple few-line change tied to the line being commented on. Author can commit directly. Preferred for nits and small suggestions.
-2. **Fenced code block**: larger change spanning multiple files or locations. Shows what the change would look like.
-3. **Prose only**: when words are clearer than code. Non-obvious code suggestions just move complexity around.
-
-## Formatting Constraints
-
-Only use formatting Jeff actually uses in review comments:
-- Backticks for inline code references
-- Numbered lists for presenting options
-- Bold for option labels (e.g., **Quick fix**:)
-- Code blocks per the rules above
-- No headers, no italics, no horizontal rules
+- Let the substance signal severity. Use `Nit:` only for a genuinely trivial point.
+- Do not add “not a blocker” by default.
+- Never issue commands such as “change this” or “please fix.”
+- Use backticks for code, and use a GitHub suggestion block only for a small, directly applicable edit.
+- No headers, greetings, praise padding, or review-summary language in an inline comment.
 
 ## Invocation
 
-Two entry points:
+For a standalone request, turn the user's technical point into a comment. For “draft a comment for point N,” use the review finding as the technical source of truth.
 
-**Standalone**: the user describes the technical point and severity. Draft the comment.
+Before returning it, check that it:
 
-**Post-review**: the user has run `/pr:review` and says something like "draft a comment for point 3". Pull the technical substance from that finding and draft it.
+1. names the actual concern or desired change;
+2. has no copied voice catchphrase;
+3. would sound normal spoken aloud; and
+4. has not lost important context in the name of brevity.
 
-In both cases:
-1. Identify the technical point and appropriate severity
-2. Pick the matching comment structure
-3. Draft the comment, erring on the side of brevity
-4. **Question-cap check**: if drafting more than one comment, count how many end with "?". More than 1 → rewrite the rest as declaratives before showing the user. Do this pass yourself; don't ship a batch of questions and wait for the user to push back.
-5. Copy to clipboard via `pbcopy`
-6. Display the comment in the conversation
+Copy the final comment to the clipboard with `pbcopy`, then display it in the conversation. On revision, update and re-copy it.
 
-If the user requests revisions, adjust and re-copy.
+## Reference material
 
-## Voice Samples
-
-Consult `references/voice-samples.md` for verbatim examples spanning the severity range. Match tone and structure to these real comments, not to an idealized version.
+`references/voice-samples.md` contains historical comments for context, not templates to imitate. Prefer the rules above over copying its wording or quirks.

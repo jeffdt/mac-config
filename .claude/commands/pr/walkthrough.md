@@ -329,7 +329,7 @@ When the user selects "Comment on recommended fixes":
    - Free-text hint: "Describe edits or which to skip"
 
 4. Handle the response:
-   - **Post all:** Post each comment via the pending MCP review (same mechanism as 3.3 step 4). Confirm each post.
+   - **Post all:** Add each comment to the pending MCP review (same mechanism as 3.3 step 4). Confirm each one. "Post" here means added to the pending review, not published — publishing is a separate decision in Phase 4.3.
    - **Edit one / Skip one:** Resolve the user's intent for the named item(s), then re-present the updated batch and ask again.
    - **Cancel:** Discard the drafts and return to the chunk's AskUserQuestion.
 
@@ -363,7 +363,7 @@ When the user selects "Leave a comment":
    - If the user selects "Change target", use their specified file/line instead.
 
 4. Post the comment:
-   - **Line-level:** Use MCP `mcp__plugin_github_github__pull_request_review_write` to create a pending review if one hasn't been started yet. Then use MCP `mcp__plugin_github_github__add_comment_to_pending_review` with the file path, line number, and comment body. Pending review accumulates comments across chunks and is submitted in Phase 4.
+   - **Line-level:** Use MCP `mcp__plugin_github_github__pull_request_review_write` with `method: create` and NO `event` field to start a pending review if one hasn't been started yet. Then use MCP `mcp__plugin_github_github__add_comment_to_pending_review` with the file path, line number, and comment body. Each comment is saved to GitHub as soon as it's added — it does not need the review to be submitted in order to exist. The pending review accumulates comments across chunks and is handed off in Phase 4, which by default means leaving it unsubmitted.
    - **General:** `gh pr comment {number} --body "{comment}" --repo {owner/repo}`
 
    **Do NOT also copy the comment to the clipboard.** Posting to the PR is the action; clipboard copy is redundant. Only `pbcopy` the comment if the user explicitly asks for it.
@@ -382,14 +382,14 @@ After all chunks have been presented, output in conversation:
 
 ### 4.2 Smoke Test Option
 
-Before asking for final disposition, offer the user the chance to smoke test the changes.
+Before handing off the review, offer the user the chance to smoke test the changes.
 
 Use AskUserQuestion:
 - Question: "Want to smoke test the changes before deciding?"
 - Header: "Smoke test"
 - Options:
   - **Yes, smoke test** (description: "Evaluate the PR's test plan and run a smoke test against the changes")
-  - **Skip, go to disposition** (description: "Skip smoke testing and decide on approval now")
+  - **Skip, go to hand-off** (description: "Skip smoke testing and go straight to the review hand-off")
 
 If the user picks **Skip**, jump to 4.3.
 
@@ -417,7 +417,7 @@ Present the plan in conversation, then use AskUserQuestion:
 - Options:
   - **Run it** (description: "Execute the smoke test plan as written")
   - **Adjust the plan** (description: "Edit steps before running")
-  - **Cancel smoke test** (description: "Skip smoke testing and go to disposition")
+  - **Cancel smoke test** (description: "Skip smoke testing and go to the review hand-off")
 - Free-text hint: "Describe edits to the plan"
 
 If the user picks **Adjust**, incorporate their edits and re-confirm before running. If **Cancel**, jump to 4.3.
@@ -433,37 +433,35 @@ Output a concise summary in conversation:
 - Any failures with the observed vs. expected behavior
 - New Concerns that emerged (number them continuing from Phase 2.5's sequence so they fold into the recap cleanly)
 
-Smoke test results feed into 4.3. If failures surfaced new issues, recommend `Request changes` or `Comment only` in the disposition prompt; if everything passed and earlier Concerns are resolved, lean toward `Approve`. The user still picks; this is just an informed default.
+Smoke test results are context for 4.3, not a recommendation to publish. Report what passed and failed and let the user decide. A clean smoke test is not a reason to lean toward submitting an approval — the default in 4.3 stays "leave as pending draft" regardless of how the smoke test went.
 
-### 4.3 Final Review Disposition
+### 4.3 Hand Off the Review
 
-Use AskUserQuestion to ask how to submit the review:
+**A pending review is a legitimate terminal state, not an unfinished one.** Comments added via `add_comment_to_pending_review` are already stored on GitHub the moment you add them. They do NOT require submission to exist or to persist. An unsubmitted review shows up in the GitHub UI with a "Finish your review" button, so the user can read it, edit individual comments, change the verdict, and submit it themselves whenever they want.
 
-- **Approve** (description: "Submit approval with no comment")
-- **Approve with comment** (description: "Submit approval with a summary comment")
-- **Comment only** (description: "Submit as comment, no approval or rejection")
-- **Request changes** (description: "Request changes with a summary of what needs fixing")
+Leaving the review pending is therefore the DEFAULT and expected way this command ends. Submitting is the exception, and it needs an explicit, unambiguous instruction from the user in this conversation.
 
-**Handling responses depends on whether a pending MCP review exists from Phase 3 line-level comments.**
+Use AskUserQuestion:
 
-**If NO pending MCP review exists** (no line-level comments were posted, only general comments or none):
+- **Leave as pending draft (Recommended)** (description: "Comments stay saved on the PR, unpublished. You submit from the GitHub UI when ready.")
+- **Publish comments, no verdict** (description: "Submit as COMMENT with no summary body — inline comments go live, no approve/request-changes")
+- **Publish with a verdict** (description: "Submit with approve / request-changes and an optional summary")
 
-- **Approve:** `gh pr review {number} --approve --repo {owner/repo}`
-- **Approve with comment:** Ask for text, then `gh pr review {number} --approve --body "{comment}" --repo {owner/repo}`
-- **Comment only:** Ask for text, then `gh pr review {number} --comment --body "{comment}" --repo {owner/repo}`
-- **Request changes:** Ask for summary, then `gh pr review {number} --request-changes --body "{summary}" --repo {owner/repo}`
+**Leave as pending draft:** Do nothing further. Tell the user the review is pending, how many inline comments it holds, and that they can finish it in the GitHub UI. Give them the PR URL. This is the end of the command.
 
-**If a pending MCP review EXISTS** (line-level comments were accumulated via `add_comment_to_pending_review`):
+**Publish comments, no verdict:** Submit the pending review via MCP `pull_request_review_write` with `method: submit_pending` and event `COMMENT`, no body.
 
-Submit the pending review via MCP `mcp__plugin_github_github__pull_request_review_write` with the appropriate event type. This submits all accumulated inline comments as part of the review. The event types map to:
-- **Approve:** submit with event `APPROVE`
-- **Approve with comment:** ask for text, submit with event `APPROVE` and body
-- **Comment only:** ask for text, submit with event `COMMENT` and body
-- **Request changes:** ask for summary, submit with event `REQUEST_CHANGES` and body
+**Publish with a verdict:** Ask which verdict, then submit via MCP `pull_request_review_write` with `method: submit_pending` and event `APPROVE` or `REQUEST_CHANGES`. Ask for a summary body; include one only if the user provides it.
 
-Do NOT use `gh pr review` when a pending MCP review exists; that would create a separate review without the inline comments.
+If NO pending review exists (no line-level comments were posted) and the user wants a verdict, use `gh pr review {number} --approve|--comment|--request-changes --repo {owner/repo}`. Do NOT use `gh pr review` when a pending review DOES exist — that creates a separate review without the inline comments.
 
-Do NOT auto-generate a comment body. "Approve" means approve silently. Only include a body if the user explicitly provides one.
+**Guardrails on submission:**
+
+- Ambiguity resolves toward NOT submitting. Phrases like "submit the comments", "post these", or "wrap it up" are ambiguous: they may mean "publish" or "save them for me". Leaving pending is trivially reversible; publishing fires notifications that cannot be recalled. When the instruction could go either way, leave it pending and say so, or ask one short clarifying question.
+- "Don't submit the review" means do not submit anything, including a bodyless `COMMENT`. It does not mean "submit without a verdict".
+- Never submit to close out your own turn, to make the work look finished, or because the recap reads better that way.
+- Do NOT auto-generate a summary body. Approve means approve silently unless the user supplies text.
+- You cannot detect from tool output whether a permission prompt appeared. An approved prompt and a silent allow look identical to you. Never infer that a guard did or didn't fire from the fact that a call succeeded.
 
 ---
 

@@ -1,16 +1,12 @@
 ---
-description: Git commit and push changes for current feature
-allowed-tools: SlashCommand:/gc:*, Bash(git push:*), Bash(git diff:*), Bash(git rev-parse:*), Bash(gh pr view:*), Bash(gh pr edit:*)
+description: "Commit and push the current feature's changes"
+allowed-tools: Skill
 ---
 
-## Pre-computed Context
+<!-- Generated from ~/.agents/workflows/gcp.md. Do not edit this copy directly. -->
 
-- Existing PR for this branch: !`gh pr view --json number,title,body,state,author 2>&1 || echo "No PR exists"`
+Apply the `git-push` skill for the underlying workflow.
 
-## Step 1: Commit changes
+## Instructions
 
-Use the SlashCommand tool to invoke /gc to commit changes.
-
-## Step 2: Push and manage PR
-
-Apply the `git-push` skill using the pre-computed context above.
+First apply the `git-commit` skill. After a successful commit, apply the `git-push` skill. Do not push when the commit workflow cannot safely complete.

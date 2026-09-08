@@ -1,17 +1,12 @@
 ---
-description: Git commit changes for current feature
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git add:*), Bash(git commit:*), Bash(git reset:*), Bash(git checkout:*), AskUserQuestion
+description: "Commit the current feature's changes"
+allowed-tools: Skill
 ---
 
-## Pre-computed Context
+<!-- Generated from ~/.agents/workflows/gc.md. Do not edit this copy directly. -->
 
-- Current branch: !`git branch --show-current`
-- Git status: !`git status`
-- Unstaged changes: !`git diff --stat`
-- Staged changes: !`git diff --staged`
-- Recent commits: !`git log -5 --oneline`
-- Commit-to-main allowed: !`test -f .claude/local/commit-to-main && echo "YES" || echo "NO"`
+Apply the `git-commit` skill for the underlying workflow.
 
 ## Instructions
 
-Apply the `git-commit` skill using the pre-computed context above.
+Apply the commit workflow. Treat any user-supplied text as a constraint or suggestion for the commit message, not as permission to skip its branch-safety or staging checks.

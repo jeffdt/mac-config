@@ -13,7 +13,7 @@
 # distinct history entry.
 #
 # Usage:
-#   plan-launch-sessions.sh [--cli claude|codex|pi] <repo_path> <prompt_path> <branch> <subdir_relative> [<repo> <prompt> <branch> <subdir> ...]
+#   plan-launch-sessions.sh [--cli claude|codex|pi] <repo_path> <prompt_path> <branch>[:<base_branch>] <subdir_relative> [<repo> <prompt> <branch>[:<base>] <subdir> ...]
 #
 # --cli selects the agent CLI used to launch each session. Default: claude.
 # codex launches `codex --full-auto "$(cat <prompt>)"`; pi launches an
@@ -21,6 +21,12 @@
 # `pi "$(cat <prompt>)"` (relying on pi's configured provider/model/thinking
 # defaults). The $-escape ensures command substitution happens in the wt
 # subshell, so prompt content with embedded quotes survives intact.
+#
+# <branch> may optionally carry a `:<base_branch>` suffix (git ref names can't
+# contain `:`, so this is an unambiguous separator) to branch from something
+# other than the repo's default branch, e.g. `jeffdt/foo:rlebel/agp-1343-agent-spec`.
+# When omitted, `wt switch --create` uses its own default (the repo's default
+# branch).
 #
 # <subdir_relative> is the path relative to the worktree root that the new
 # session should cd into before launching the agent (pass `.` to launch at
@@ -45,15 +51,22 @@ fi
 
 build_launch_cmd() {
   local repo=$1 prompt=$2 branch=$3 subdir=$4
+  local base=""
+  if [[ "$branch" == *:* ]]; then
+    base=${branch#*:}
+    branch=${branch%%:*}
+  fi
+  local base_flag=""
+  [[ -n "$base" ]] && base_flag=" --base $base"
   case "$cli" in
     claude)
-      printf 'cd %s && wt switch --create %s -x "cd %s && cat %s | claude"' "$repo" "$branch" "$subdir" "$prompt"
+      printf 'cd %s && wt switch --create %s%s -x "cd %s && cat %s | claude"' "$repo" "$branch" "$base_flag" "$subdir" "$prompt"
       ;;
     codex)
-      printf 'cd %s && wt switch --create %s -x "cd %s && codex --full-auto \\"\$(cat %s)\\""' "$repo" "$branch" "$subdir" "$prompt"
+      printf 'cd %s && wt switch --create %s%s -x "cd %s && codex --full-auto \\"\$(cat %s)\\""' "$repo" "$branch" "$base_flag" "$subdir" "$prompt"
       ;;
     pi)
-      printf 'cd %s && wt switch --create %s -x "cd %s && pi \\"\$(cat %s)\\""' "$repo" "$branch" "$subdir" "$prompt"
+      printf 'cd %s && wt switch --create %s%s -x "cd %s && pi \\"\$(cat %s)\\""' "$repo" "$branch" "$base_flag" "$subdir" "$prompt"
       ;;
   esac
 }
@@ -106,11 +119,13 @@ while (( $# >= 4 )); do
 
   cmd=$(build_launch_cmd "$repo" "$prompt" "$branch" "$subdir")
   label=$(basename "$repo")
-  # Window title: drop the "owner/" prefix and a leading "ticket-NNN-" segment,
-  # then trim common destination qualifiers, so multiple sessions in one repo are
-  # distinguishable and readable (e.g. jeffdt/ampss-375-delstrat-rehome-amplify-success
-  # -> delstrat-rehome). Falls back to the repo name.
-  title=${branch#*/}
+  # Window title: drop any `:base_branch` suffix, then the "owner/" prefix and
+  # a leading "ticket-NNN-" segment, then trim common destination qualifiers,
+  # so multiple sessions in one repo are distinguishable and readable (e.g.
+  # jeffdt/ampss-375-delstrat-rehome-amplify-success -> delstrat-rehome).
+  # Falls back to the repo name.
+  title=${branch%%:*}
+  title=${title#*/}
   if [[ $title =~ ^[a-z]+-[0-9]+-(.+)$ ]]; then title=${BASH_REMATCH[1]}; fi
   title=${title%-amplify-success}; title=${title%-amplify-cs}; title=${title%-region-aware}
   title=${title:-$label}

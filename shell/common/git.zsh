@@ -97,7 +97,7 @@ _pr_prepare_slot() {
     if [[ "$input" == "-h" || "$input" == "--help" ]]; then
         cat >&2 <<EOF
 Usage:
-  $caller <pr-url>   Prepare review slot for a GitHub PR URL
+  $caller <pr-url>   Prepare a Worktrunk worktree for a GitHub PR URL
   $caller <number>   Resolve PR number in current repo (must be inside a repo)
   $caller            Read PR URL from clipboard (pbpaste)
 EOF
@@ -141,47 +141,10 @@ EOF
         _pr_locate_repo_error "$caller" "$repo"
         return 1
     fi
-    # Slots are keyed on PR number so multiple reviews on the same repo can
-    # run in parallel. Re-running on the same PR reuses its existing slot.
-    local slot_path="${repo_path}.pr-review-${number}"
-    _pr_log "repo_path='$repo_path' slot_path='$slot_path' slot_exists=$([[ -d "$slot_path" ]] && echo yes || echo no)"
 
-    if [[ ! -d "$slot_path" ]]; then
-        _pr_log "fetch origin in '$repo_path'"
-        git -C "$repo_path" fetch origin >/dev/null || { _pr_log "FAIL fetch rc=$?"; return 1; }
-        _pr_log "worktree add --detach '$slot_path' origin/HEAD"
-        git -C "$repo_path" worktree add --detach "$slot_path" origin/HEAD || { _pr_log "FAIL worktree add rc=$?"; return 1; }
-    fi
-
-    if ! git -C "$slot_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        _pr_log "FAIL slot exists but not a worktree: '$slot_path'"
-        echo "$caller: $slot_path exists but is not a git worktree. Remove it and retry." >&2
-        return 1
-    fi
-
-    local current_branch expected_branch
-    current_branch="$(git -C "$slot_path" branch --show-current 2>/dev/null)"
-    expected_branch="$(gh pr view "$number" --json headRefName -q .headRefName --repo "$org/$repo" 2>/dev/null)"
-    _pr_log "current_branch='$current_branch' expected_branch='$expected_branch'"
-
-    if [[ -n "$current_branch" && "$current_branch" == "$expected_branch" ]]; then
-        _pr_log "branch already checked out; cd into slot (direnv fires here)"
-        cd "$slot_path" || { _pr_log "FAIL cd rc=$?"; echo "$caller: could not cd into $slot_path" >&2; return 1; }
-        _pr_log "RETURN 0 (reused slot) cwd='$PWD'"
-        return 0
-    fi
-
-    _pr_log "cd into slot (direnv fires here)"
-    cd "$slot_path" || { _pr_log "FAIL cd rc=$?"; return 1; }
-    _pr_log "git reset --hard"
-    git reset --hard >/dev/null || { _pr_log "FAIL reset rc=$?"; return 1; }
-    _pr_log "git clean -fd"
-    git clean -fd >/dev/null || { _pr_log "FAIL clean rc=$?"; return 1; }
-    _pr_log "git fetch origin"
-    git fetch origin || { _pr_log "FAIL fetch rc=$?"; return 1; }
-    _pr_log "gh pr checkout $number"
-    gh pr checkout "$number" || { _pr_log "FAIL gh pr checkout rc=$?"; return 1; }
-    _pr_log "RETURN 0 (checked out) cwd='$PWD'"
+    _pr_log "wt switch pr:$number from '$repo_path'"
+    wt -C "$repo_path" switch "pr:$number" || { _pr_log "FAIL wt switch rc=$?"; return 1; }
+    _pr_log "RETURN 0 cwd='$PWD'"
 }
 
 # Run slot prep, then hand off to claude. /pr:review and /pr:walkthrough are
@@ -374,29 +337,19 @@ _gh_code_resolve_ref() {
     echo "${first}|${relpath}"
 }
 
-# True if `ref` shouldn't get a reusable long-lived worktree slot: the
-# repo's default branch, a literal main/master/develop, or a raw commit SHA.
-# Keying a slot off "main" would collide across unrelated visits, and
-# SHA-named slots would pile up with no natural reuse point.
-_gh_code_is_default_or_sha() {
+# Return the commit that a GitHub code URL names. Named branches can switch
+# directly through Worktrunk. Default-branch and SHA URLs instead get a stable
+# synthetic branch pinned to this commit, keeping the primary checkout clean.
+_gh_code_commit() {
     local repo_path="$1" ref="$2"
-    case "$ref" in
-        main|master|develop) return 0 ;;
-    esac
-    [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]] && return 0
-    local default_branch
-    default_branch="$(git -C "$repo_path" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
-    [[ -n "$default_branch" && "$ref" == "$default_branch" ]]
+    git -C "$repo_path" rev-parse --verify "origin/$ref^{commit}" 2>/dev/null \
+        || git -C "$repo_path" rev-parse --verify "$ref^{commit}" 2>/dev/null
 }
 
-# Prepare a worktree for a github-code discuss session and cd into it.
-# Reusable branches get a long-lived slot keyed by repo+branch (checking for
-# an already-checked-out worktree first, same as _pr_feedback_prepare, since
-# the user is often already working on their own branch). Default-branch or
-# raw-SHA refs get a fresh detached worktree each time instead, so the caller
-# (gcd) can tell the spawned session to cut its own branch before touching
-# anything. Sets `gcd_ephemeral` (pre-declared local in the caller, per the
-# _pr_engine dynamic-scoping trick) to 1 in that case.
+# Prepare a Worktrunk worktree for a github-code discuss session and cd into it.
+# A named branch uses that branch directly. Default-branch and SHA URLs use a
+# synthetic `tentacle/code/<commit>` branch so Worktrunk can create the
+# worktree, run its hooks, and keep the requested commit pinned.
 _gh_code_prepare_slot() {
     local caller="${funcstack[2]:-gcd}"
     local url="$1"
@@ -423,42 +376,26 @@ _gh_code_prepare_slot() {
     IFS='|' read -r ref relpath <<< "$(_gh_code_resolve_ref "$repo_path" "$rest")"
     _pr_log "parsed owner='$owner' repo='$repo' kind='$kind' ref='$ref' relpath='$relpath'"
 
-    if _gh_code_is_default_or_sha "$repo_path" "$ref"; then
+    local branch="$ref"
+    if [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]] || [[ "$ref" == "$(git -C "$repo_path" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')" ]]; then
+        local commit
+        if ! commit="$(_gh_code_commit "$repo_path" "$ref")"; then
+            echo "$caller: could not resolve commit for '$ref'" >&2
+            return 1
+        fi
+        branch="tentacle/code/${commit[1,12]}"
         gcd_ephemeral=1
-        local slot_path="${repo_path}.code-discuss-$$"
-        _pr_log "ephemeral ref='$ref'; worktree add --detach '$slot_path'"
-        git -C "$repo_path" worktree add --detach "$slot_path" "origin/$ref" 2>/dev/null \
-            || git -C "$repo_path" worktree add --detach "$slot_path" "$ref" \
-            || { _pr_log "FAIL worktree add rc=$?"; echo "$caller: could not create worktree at '$ref'" >&2; return 1; }
-        cd "$slot_path" || { _pr_log "FAIL cd rc=$?"; return 1; }
-        return 0
+        _pr_log "creating or reusing synthetic branch '$branch' pinned to '$commit'"
+        if ! git -C "$repo_path" show-ref --verify --quiet "refs/heads/$branch"; then
+            wt -C "$repo_path" switch --create "$branch" --base "$commit" || { _pr_log "FAIL wt switch rc=$?"; return 1; }
+            _pr_log "RETURN 0 cwd='$PWD'"
+            return 0
+        fi
     fi
 
-    local existing
-    if existing="$(_pr_worktree_for_branch "$repo_path" "$ref")"; then
-        _pr_log "reusing existing worktree for '$ref': '$existing'"
-        cd "$existing" || { _pr_log "FAIL cd rc=$?"; echo "$caller: could not cd into $existing" >&2; return 1; }
-        git fetch origin "$ref" >/dev/null 2>&1
-        return 0
-    fi
-
-    local sanitized="${ref//\//-}"
-    local slot_path="${repo_path}.code-discuss-${sanitized}"
-    _pr_log "no existing worktree for '$ref'; slot_path='$slot_path' slot_exists=$([[ -d "$slot_path" ]] && echo yes || echo no)"
-
-    if [[ ! -d "$slot_path" ]]; then
-        if git -C "$repo_path" show-ref --verify --quiet "refs/heads/$ref"; then
-            git -C "$repo_path" worktree add "$slot_path" "$ref"
-        else
-            git -C "$repo_path" worktree add "$slot_path" -b "$ref" "origin/$ref"
-        fi || { _pr_log "FAIL worktree add rc=$?"; echo "$caller: could not create worktree for '$ref'" >&2; return 1; }
-    fi
-
-    cd "$slot_path" || { _pr_log "FAIL cd rc=$?"; return 1; }
-    git fetch origin "$ref" >/dev/null 2>&1
-    git reset --hard "origin/$ref" >/dev/null 2>&1
-    git clean -fd >/dev/null 2>&1
-    return 0
+    _pr_log "wt switch '$branch' from '$repo_path'"
+    wt -C "$repo_path" switch "$branch" || { _pr_log "FAIL wt switch rc=$?"; return 1; }
+    _pr_log "RETURN 0 cwd='$PWD'"
 }
 
 # Open a fresh session on a GitHub file/directory browse page with a
@@ -477,7 +414,7 @@ gcd() {
     fi
     _gh_code_prepare_slot "$url" || return 1
     local note=""
-    (( gcd_ephemeral )) && note=$'You are in a fresh detached-HEAD worktree at this ref. Cut your own branch before making any changes.\n\n'
-    _pr_log "_gh_code_prepare_slot ok ephemeral=$gcd_ephemeral; exec $engine cwd='$PWD'"
+    (( gcd_ephemeral )) && note=$'You are in a Worktrunk worktree on a synthetic branch pinned to this ref. Create a new branch before making changes you intend to keep.\n\n'
+    _pr_log "_gh_code_prepare_slot ok synthetic=$gcd_ephemeral; exec $engine cwd='$PWD'"
     exec "$engine" "${note}${url}"$'\n\n'"${prompt}"
 }

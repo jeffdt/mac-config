@@ -1,14 +1,12 @@
 ---
-description: Create a draft pull request for the current branch
-allowed-tools: Bash, Read, Edit, Grep, Glob, Agent, AskUserQuestion, SlashCommand:/ticket:find:*, SlashCommand:/pr:simplify:*
+description: "Create a draft pull request for the current branch"
+allowed-tools: Skill
 ---
 
-## Pre-computed Context
+<!-- Generated from ~/.agents/workflows/pr-draft.md. Do not edit this copy directly. -->
 
-- Current branch: !`git branch --show-current`
-- Git status: !`git status`
-- PR template: !`cat .github/pull_request_template.md 2>/dev/null || echo "No PR template found"`
+Apply the `create-pr` skill for the underlying workflow.
 
 ## Instructions
 
-Apply the `create-pr` skill using the pre-computed context above.
+Apply the `create-pr` skill. Treat a user-supplied argument as the ticket identifier when one is supplied; otherwise let the underlying workflow detect the ticket.
