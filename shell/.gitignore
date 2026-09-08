@@ -1,0 +1,4 @@
+# Machine-specific shell configuration and credentials.
+local.zsh
+local/
+.claude/

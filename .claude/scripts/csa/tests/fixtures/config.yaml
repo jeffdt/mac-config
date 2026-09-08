@@ -1,0 +1,13 @@
+services:
+  app:
+    root: /tmp/test/app
+    command: echo app-dev
+    ready_url: http://localhost:9001/
+  k-repo:
+    root: /tmp/test/k-repo
+    command: echo k-repo-dev
+    ready_url: http://localhost:9002/
+  fender:
+    root: /tmp/test/fender
+    command: echo fender-dev
+    ready_url: http://localhost:9003/

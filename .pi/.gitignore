@@ -1,0 +1,19 @@
+# Ignore Pi runtime state and credentials by default.
+*
+
+# Keep portable user configuration already tracked by dotfiles.
+!.gitignore
+!agent/
+agent/*
+!agent/keybindings.json
+!agent/settings.json
+
+# Keep generated agents published from ~/.agents.
+!agent/agents/
+agent/agents/*
+!agent/agents/generated/
+!agent/agents/generated/**
+
+# Keep manually authored Pi agents.
+!agents/
+!agents/**

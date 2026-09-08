@@ -1,0 +1,251 @@
+{
+  "pr": {
+    "owner": "klaviyo",
+    "repo": "ai-assistant",
+    "number": 2147,
+    "title": "Add forms list tool to the LLM assistant",
+    "author": "andrewklaviyo",
+    "head_branch": "andrewklaviyo/forms-list-tool",
+    "base_branch": "main",
+    "additions": 412,
+    "deletions": 87,
+    "files_changed": 7,
+    "state": "Ready for review",
+    "url": "https://github.com/klaviyo/ai-assistant/pull/2147",
+    "ticket": {
+      "id": "AMPSS-1284",
+      "url": "https://linear.app/klaviyo/issue/AMPSS-1284"
+    },
+    "updated_at": "2026-05-26"
+  },
+  "narrative": "Adds a new <code>forms_list</code> tool that lets the LLM assistant query the upstream <code>FormsService</code> on behalf of a user. Most of the work is in the tool shim (<code>forms.py</code>) \u2014 argument validation, filter-building, response shaping, error mapping to the SSE protocol \u2014 and a tight protocol-based mock so tests can exercise the seam without spinning up the real service. The PR also adds a stub mode so the assistant works in dev environments where <code>FormsService</code> isn't reachable.",
+  "chunks": [
+    {
+      "id": 1,
+      "title": "Schema & DTOs",
+      "category": "Schema",
+      "files": [
+        "forms_service/src/dtos/list_dto.py"
+      ],
+      "intro": "New <code>FormFilters</code>, <code>FormCursor</code>, and <code>FormListItem</code> types \u2014 the contract the tool will sit on top of.",
+      "additions": 42,
+      "deletions": 3,
+      "diff": "@@ -10,5 +10,18 @@ from dataclasses import dataclass\n from enum import Enum\n \n \n+class FormStatus(Enum):\n+    LIVE = \"live\"\n+    DRAFT = \"draft\"\n+    ARCHIVED = \"archived\"\n+\n+\n @dataclass(kw_only=True, frozen=True)\n class FormFilters:\n     status: list[FormStatus] | None = None\n+    channel_type: ChannelType | None = None\n+    name_substring: str | None = None  # case-insensitive substring match\n@@ -42,2 +55,8 @@ class FormCursor:\n     opaque_token: str\n+    # Note: no version prefix \u2014 if pagination format changes we'll need a migration.\n",
+      "findings": [
+        {
+          "id": 5,
+          "type": "concern",
+          "summary": "Cursor encoding doesn't pin a schema version",
+          "body": "<p>The cursor field is an opaque string with no version prefix. If we ever change the pagination format \u2014 add a new field, switch encoding, etc. \u2014 there's no way to detect old cursors gracefully. Clients would silently get wrong-window results.</p>",
+          "evidence": "list_dto.py:55-56 defines cursor as opaque str; comment acknowledges the gap but doesn't address it. No version detection in the consumer code (forms.py:_resolve_cursor) either.",
+          "evidence_kind": "evidence",
+          "recommend_fix": true,
+          "anchor": {
+            "file": "list_dto.py",
+            "snippet": "# Note: no version prefix"
+          },
+          "thread": null
+        }
+      ],
+      "strengths": [
+        "<code>FormFilters</code> uses <code>dataclass(kw_only=True, frozen=True)</code> so positional misuse and accidental mutation are both impossible.",
+        "<code>FormStatus</code> enum values match the upstream service strings, no translation layer needed."
+      ]
+    },
+    {
+      "id": 2,
+      "title": "The forms list tool",
+      "category": "Core logic",
+      "files": [
+        "klaviyo/ai_assistant/tools/forms.py"
+      ],
+      "intro": "The shim. Maps tool args to <code>FormFilters</code>, calls the service, shapes the response. Small but load-bearing \u2014 the single seam between the LLM's free-form intent and the typed service contract.",
+      "additions": 47,
+      "deletions": 12,
+      "diff": "@@ -97,6 +97,14 @@ class FormsTool\n     def _resolve_limit(self, limit):\n         if limit is None:\n             return DEFAULT_LIMIT\n+        if isinstance(limit, bool):\n+            raise ValueError(f\"limit must be int, got bool: {limit!r}\")\n         return max(MIN_LIMIT, min(MAX_LIMIT, limit))\n@@ -220,4 +228,9 @@ class FormsTool\n     def _build_filters(self, status_filter, channel_type, name_substring):\n         if status_filter is None:\n+            status_filter = [FormStatus.LIVE]\n         elif not isinstance(status_filter, list):\n             status_filter = [status_filter]\n",
+      "findings": [
+        {
+          "id": 1,
+          "type": "concern",
+          "summary": "Docstring claim isn't pinned by a test",
+          "body": "<p>The tool docstring claims <code>name_substring</code> does case-insensitive substring matching on the form name, but that semantics is owned entirely by the upstream <code>FormsService</code> and isn't pinned by a test here. If the service changes matching behavior, this docstring silently lies to the LLM.</p>",
+          "evidence": "forms.py:244-245 promise the case-insensitive behavior; confirmed only as a DTO field comment in forms_service/src/dtos/list_dto.py:29. No end-to-end assertion ties this docstring to actual matching behavior.",
+          "evidence_kind": "evidence",
+          "recommend_fix": false,
+          "anchor": null,
+          "thread": null
+        },
+        {
+          "id": 2,
+          "type": "concern",
+          "summary": "Unresolved thread on <code>status_filter</code> default",
+          "body": "<p>Existing comment from <code>@andrewklaviyo</code>: \"Confirming this default behavior with Tyler in the ticket.\" If Tyler comes back with \"no filter should mean all statuses,\" the LIVE default flips. Stub mode masks this locally because <code>_StubFormsService</code> ignores filters entirely.</p>",
+          "evidence": "https://github.com/klaviyo/ai-assistant/pull/2147#discussion_r2851047",
+          "evidence_kind": "source",
+          "recommend_fix": false,
+          "anchor": {
+            "file": "forms.py",
+            "snippet": "if status_filter is None:"
+          },
+          "thread": {
+            "status": "unresolved",
+            "url": "https://github.com/klaviyo/ai-assistant/pull/2147#discussion_r2851047",
+            "author": "andrewklaviyo"
+          }
+        },
+        {
+          "id": 3,
+          "type": "suggestion",
+          "summary": "Missing <code>ChannelType</code> import",
+          "body": "<p><code>ChannelType</code> is exported from <code>klaviyo.forms.forms_service.__all__</code> and is the type of <code>FormListItem.channel_type</code>, but it's not imported in <code>forms.py</code>. Works at runtime via attribute access, but the import block is asymmetric with <code>FormStatus</code> / <code>FormType</code>. Add it for consistency.</p>",
+          "evidence": "forms.py:19-26 imports FormCursor/FormFilters/FormListItem/FormSearchResponse/FormStatus/FormType but not ChannelType; _shape_form uses form.channel_type.value; forms_service/__init__.py:4 exposes ChannelType in __all__.",
+          "evidence_kind": "evidence",
+          "recommend_fix": true,
+          "anchor": null,
+          "thread": null
+        },
+        {
+          "id": 4,
+          "type": "suggestion",
+          "summary": "No test covers <code>limit=True</code> / <code>limit=False</code>",
+          "body": "<p>No test covers <code>limit=True</code> / <code>limit=False</code>. The <code>isinstance(limit, bool)</code> guard exists because <code>bool</code> is a subclass of <code>int</code>; without a test, that guard is dark code. The LLM passing <code>True</code> instead of <code>1</code> is a realistic input.</p>",
+          "evidence": "forms.py:100 explicitly guards bool; TestResolveLimit in test_forms.py covers None/in-range/min/max/zero/negative/above-max but not bool.",
+          "evidence_kind": "evidence",
+          "recommend_fix": true,
+          "anchor": {
+            "file": "forms.py",
+            "snippet": "if isinstance(limit, bool):"
+          },
+          "thread": null
+        }
+      ],
+      "strengths": [
+        "<code>RetryableKlaviyoError</code> before <code>KlaviyoClientError</code> in the except chain is correctly ordered with the diamond-inheritance reason commented.",
+        "<code>_resolve_cursor</code> uses exact-equality (<code>set(cursor.keys()) != expected_keys</code>) rather than subset checks, closing the \"LLM invents a cursor field\" hallucination vector.",
+        "SSE <code>tool_call_start</code> / result events paired on every path; <code>emit_tool_error</code> always emits a result event before returning.",
+        "<code>FormsClient</code> Protocol structurally types only the one method actually used, keeping the mock surface minimal.",
+        "Shape helpers extracted as pure functions so tests can exercise shaping independently of tool wiring."
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Tool registration",
+      "category": "API surface",
+      "files": [
+        "klaviyo/ai_assistant/tools/__init__.py"
+      ],
+      "intro": "Wires <code>forms_list</code> into the tool registry so the LLM can discover and call it.",
+      "additions": 6,
+      "deletions": 0,
+      "diff": "@@ -12,3 +12,9 @@ from .lists import lists_tool_definitions\n from .segments import segments_tool_definitions\n+from .forms import forms_tool_definitions\n \n \n ALL_TOOLS = [\n     *lists_tool_definitions(),\n     *segments_tool_definitions(),\n+    *forms_tool_definitions(),\n ]\n",
+      "findings": [
+        {
+          "id": 6,
+          "type": "suggestion",
+          "summary": "Registry order affects LLM tool discovery ranking",
+          "body": "<p>The order of tools in <code>ALL_TOOLS</code> influences which tool the LLM picks first when prompts are ambiguous. <code>forms_list</code> is appended last; if forms queries are common, consider promoting it.</p>",
+          "evidence": "tools/__init__.py:14-18. The system prompt iterates ALL_TOOLS in order when constructing the tool description block.",
+          "evidence_kind": "evidence",
+          "recommend_fix": false,
+          "anchor": {
+            "file": "__init__.py",
+            "snippet": "*segments_tool_definitions(),"
+          },
+          "thread": null
+        }
+      ],
+      "strengths": []
+    },
+    {
+      "id": 4,
+      "title": "Tests",
+      "category": "Tests",
+      "files": [
+        "tests/tools/test_forms.py"
+      ],
+      "intro": "Coverage for argument resolution, filter building, response shaping, and error paths. Uses a protocol-based mock so the upstream <code>FormsService</code> isn't required.",
+      "additions": 218,
+      "deletions": 0,
+      "diff": "@@ -0,0 +1,80 @@\n+from unittest.mock import Mock\n+import pytest\n+from klaviyo.ai_assistant.tools.forms import FormsTool, FormsClient\n+\n+\n+class TestResolveLimit:\n+    def test_none_returns_default(self):\n+        tool = FormsTool(client=Mock(spec=FormsClient))\n+        assert tool._resolve_limit(None) == DEFAULT_LIMIT\n+\n+    def test_in_range(self):\n+        tool = FormsTool(client=Mock(spec=FormsClient))\n+        assert tool._resolve_limit(25) == 25\n+\n+    def test_above_max_clamps(self):\n+        tool = FormsTool(client=Mock(spec=FormsClient))\n+        assert tool._resolve_limit(MAX_LIMIT + 100) == MAX_LIMIT\n",
+      "findings": [
+        {
+          "id": 7,
+          "type": "suggestion",
+          "summary": "Mock fixture could share setup with real-service tests",
+          "body": "<p>The <code>Mock(spec=FormsClient)</code> setup is duplicated across every test method. A pytest fixture would DRY it up and make it easier to swap in the real client for integration runs.</p>",
+          "evidence": "test_forms.py:18 onward instantiates the same mock 12 times. No conftest.py fixture exists for FormsClient.",
+          "evidence_kind": "evidence",
+          "recommend_fix": false,
+          "anchor": {
+            "file": "test_forms.py",
+            "snippet": "tool = FormsTool(client=Mock(spec=FormsClient))"
+          },
+          "thread": null
+        }
+      ],
+      "strengths": [
+        "Each test method names a single behavior; failures will point at the right thing.",
+        "Uses <code>pytest.mark.parametrize</code> for the limit-range cases, keeping the test body small."
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Stub service",
+      "category": "Dev support",
+      "files": [
+        "klaviyo/ai_assistant/tools/_stubs.py"
+      ],
+      "intro": "<code>_StubFormsService</code> returns canned data so the assistant works in dev environments where the real <code>FormsService</code> isn't reachable.",
+      "additions": 64,
+      "deletions": 0,
+      "diff": "@@ -0,0 +1,30 @@\n+class _StubFormsService:\n+    \"\"\"Returns canned data when FORMS_SERVICE_URL is unset.\"\"\"\n+\n+    def list_forms(self, filters=None, cursor=None, limit=None):\n+        # Ignores filters entirely \u2014 returns the same 3 forms regardless.\n+        return FormSearchResponse(\n+            items=[\n+                FormListItem(id=\"f1\", name=\"Welcome\", status=FormStatus.LIVE),\n+                FormListItem(id=\"f2\", name=\"Footer signup\", status=FormStatus.LIVE),\n+                FormListItem(id=\"f3\", name=\"Holiday 2025\", status=FormStatus.ARCHIVED),\n+            ],\n+            next_cursor=None,\n+        )\n",
+      "findings": [],
+      "strengths": [
+        "Stub explicitly documents that it ignores filters \u2014 saves debugging time when dev results look wrong."
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Config",
+      "category": "Config / fixtures",
+      "files": [
+        "config/settings.py",
+        "conftest.py"
+      ],
+      "intro": "Feature flag plus a test fixture that flips it on for the test suite.",
+      "additions": 35,
+      "deletions": 72,
+      "diff": "@@ -88,1 +88,4 @@ FEATURE_FLAGS = {\n+    \"forms_list_tool_enabled\": EnvFlag(\"FORMS_LIST_TOOL\", default=False),\n }\n",
+      "findings": [],
+      "strengths": []
+    }
+  ],
+  "skipped_files": [
+    {
+      "path": "poetry.lock",
+      "additions": 182,
+      "deletions": 156,
+      "flag": null
+    },
+    {
+      "path": "tests/__snapshots__/forms_list.json",
+      "additions": 44,
+      "deletions": 0,
+      "flag": null
+    },
+    {
+      "path": "docs/llm_tools.md",
+      "additions": 12,
+      "deletions": 0,
+      "flag": "Unexpected: new docs file"
+    }
+  ],
+  "test_plan": {
+    "present": true,
+    "items": [
+      "Manual smoke test: asked the assistant \"list my live signup forms\" and verified the response shape",
+      "Unit tests pass: <code>pytest tests/tools/test_forms.py</code>",
+      "Stub mode: ran the assistant locally with <code>FORMS_SERVICE_URL</code> unset"
+    ]
+  }
+}

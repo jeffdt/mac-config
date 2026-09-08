@@ -1,0 +1,17 @@
+{
+  "name": "runlayer-local",
+  "plugins": [
+    {
+      "name": "runlayer-plugin",
+      "source": {
+        "source": "local",
+        "path": "./.agents/plugins/runlayer-plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

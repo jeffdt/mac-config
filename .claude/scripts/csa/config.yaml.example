@@ -1,0 +1,10 @@
+# csa service config
+# Lives at ~/.config/csa/config.yaml after `install.sh`.
+
+services:
+  app:
+    ready_url: http://local-klaviyo.com:8080/
+  k-repo:
+    ready_url: http://localhost:8091/api/health
+  fender:
+    ready_url: https://localhost:3998/

@@ -3,6 +3,9 @@
 .publish.launchd.log
 .publish.lock/
 .skill-lock.json
+node_modules/
+plugins/*/.installed
+plugins/*/.mcp.json
 **/__pycache__/
 **/.pytest_cache/
 *.pyc

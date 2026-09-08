@@ -1,0 +1,65 @@
+#!/bin/bash
+# daily-log-git - Get git activity (commits + reflog) for a date or date range
+# Usage: daily-log-git YYYY-MM-DD [END_YYYY-MM-DD]
+#
+# Single date: daily-log-git 2026-03-01
+# Date range:  daily-log-git 2026-02-23 2026-03-01
+
+set -e
+
+START_DATE="${1:-$(date +%Y-%m-%d)}"
+END_DATE="${2:-$START_DATE}"
+REPOS_DIR="$HOME/Klaviyo/Repos"
+AUTHOR="jeff"
+
+# Collect commits with dates, then group by date
+echo "=== Git Commits ==="
+{
+    for repo in "$REPOS_DIR"/*/; do
+        if [[ -d "$repo/.git" ]]; then
+            repo_name=$(basename "$repo")
+            git -C "$repo" log --author="$AUTHOR" \
+                --since="$START_DATE 00:00" --until="$END_DATE 23:59" \
+                --format="%ad|$repo_name|%h %s" --date=short 2>/dev/null || true
+        fi
+    done
+} | sort | awk -F'|' '
+    BEGIN { current_date = "" }
+    {
+        if ($1 != current_date) {
+            if (current_date != "") print ""
+            print "--- " $1 " ---"
+            current_date = $1
+        }
+        print $2 ": " $3
+    }
+'
+
+echo ""
+echo "=== Git Reflog ==="
+
+# For reflog, iterate dates in range and grep each
+current="$START_DATE"
+while [[ "$current" < "$END_DATE" || "$current" == "$END_DATE" ]]; do
+    month=$(date -j -f "%Y-%m-%d" "$current" "+%b" 2>/dev/null || date -d "$current" "+%b")
+    day=$(date -j -f "%Y-%m-%d" "$current" "+%-d" 2>/dev/null || date -d "$current" "+%-d")
+    pattern="$month $day"
+    has_activity=false
+
+    for repo in "$REPOS_DIR"/*/; do
+        if [[ -d "$repo/.git" ]]; then
+            activity=$(git -C "$repo" reflog --date=local 2>/dev/null | grep "$pattern" | head -5 || true)
+            if [[ -n "$activity" ]]; then
+                if [[ "$has_activity" == false ]]; then
+                    echo ""
+                    echo "--- $current ---"
+                    has_activity=true
+                fi
+                echo "$(basename "$repo"):"
+                echo "$activity"
+            fi
+        fi
+    done
+
+    current=$(date -j -v+1d -f "%Y-%m-%d" "$current" "+%Y-%m-%d" 2>/dev/null || date -d "$current + 1 day" "+%Y-%m-%d")
+done

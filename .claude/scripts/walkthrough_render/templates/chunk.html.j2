@@ -1,0 +1,623 @@
+{% macro render_finding(f) %}
+<details class="finding{% if f.type == 'suggestion' %} suggest{% endif %}" id="f{{ f.id }}"{% if f.recommend_fix %} open{% endif %}>
+  <summary>
+    <span class="tag">{{ 'Sugg' if f.type == 'suggestion' else 'Concern' }}</span>
+    <span class="num">#{{ f.id }}</span>
+    <span class="summary-text">{{ f.summary|safe }}</span>
+    {% if f.recommend_fix %}<span class="recommend">Rec</span>{% endif %}
+    {% if f.thread %}<span class="thread-status">{{ f.thread.status }}</span>{% endif %}
+    {% if f.anchor %}<span class="where">L{{ f.anchor.lines|join('–') }}</span>{% else %}<span class="where">file-wide</span>{% endif %}
+    <span class="chevron">›</span>
+  </summary>
+  <div class="body">
+    {{ f.body|safe }}
+    <span class="evidence{% if f.evidence_kind == 'source' %} source{% endif %}">
+      {% if f.evidence_kind == 'source' %}<a href="{{ f.evidence }}" class="thread-link">{{ f.evidence }}</a>{% else %}{{ f.evidence|safe }}{% endif %}
+    </span>
+  </div>
+</details>
+{% endmacro %}
+<!DOCTYPE html>
+<html lang="en" style="background:#F4EEDF">
+<head>
+<meta charset="UTF-8">
+<title>PR Walkthrough — Chunk {{ '%02d' % chunk.id }} — {{ chunk.title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+{% include '_styles.css' %}
+
+/* chunk page override: fixed-height two-column independent-scroll layout */
+html, body {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ───────────── split body ───────────── */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(360px, 1fr);
+  height: calc(100vh - var(--topbar-h));
+  overflow: hidden;
+}
+.col {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.col::-webkit-scrollbar { width: 10px; }
+.col::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+.col::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+.col.diff-col { border-right: 1px solid var(--border); padding: 28px 32px 80px; }
+.col.findings-col { padding: 28px 28px 80px; background: var(--bg-rail); }
+
+/* ───────────── diff column ───────────── */
+.col-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.col-head h2 {
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.col-head .path {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-mute);
+}
+.col-head .meta {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+.col-head .meta .add { color: var(--moss); }
+.col-head .meta .rem { color: var(--rose-mute); }
+
+.intro {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-variation-settings: 'opsz' 24;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  letter-spacing: -0.003em;
+  margin-bottom: 24px;
+  max-width: 720px;
+}
+.intro code {
+  font-family: var(--mono);
+  font-size: 13.5px;
+  color: var(--amber);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.diff {
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.diff-head {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+}
+.diff-head .path { color: var(--ink); }
+.diff-head .stats-inline { display: flex; gap: 14px; font-variant-numeric: tabular-nums; }
+.diff-head .add { color: var(--moss); }
+.diff-head .rem { color: var(--rose-mute); }
+
+.diff-body {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.75;
+  padding: 10px 0;
+  overflow-x: auto;
+}
+.line {
+  display: grid;
+  grid-template-columns: 44px 44px 18px 1fr;
+  padding: 0;
+  position: relative;
+  transition: background 0.15s ease;
+}
+.ln { text-align: right; padding: 0 8px; color: var(--ink-faint); font-size: 11.5px; user-select: none; font-variant-numeric: tabular-nums; }
+.marker { text-align: center; color: var(--ink-faint); user-select: none; }
+.code { padding-right: 24px; color: var(--ink); white-space: pre; }
+.line.add { background: var(--diff-add-bg); }
+.line.add .marker { color: var(--moss); }
+.line.rem { background: var(--diff-rem-bg); }
+.line.rem .marker { color: var(--rose-mute); }
+/* unhighlighted (unknown language) fallback keeps the classic diff text tint */
+.diff-body:not(.hl) .line.add .code { color: var(--diff-add-text); }
+.diff-body:not(.hl) .line.rem .code { color: var(--diff-rem-text); }
+
+/* ── syntax highlighting (Pygments, tok- prefixed) ── */
+.diff-body .tok-c, .diff-body .tok-ch, .diff-body .tok-cm, .diff-body .tok-c1, .diff-body .tok-cs, .diff-body .tok-cpf { color: var(--ink-faint); font-style: italic; }
+.diff-body .tok-cp { color: var(--indigo-mute); }
+.diff-body .tok-k, .diff-body .tok-kc, .diff-body .tok-kd, .diff-body .tok-kn, .diff-body .tok-kp, .diff-body .tok-kr { color: var(--indigo); }
+.diff-body .tok-kt { color: var(--indigo-mute); }
+.diff-body .tok-s, .diff-body .tok-sb, .diff-body .tok-sc, .diff-body .tok-sd, .diff-body .tok-s2, .diff-body .tok-s1, .diff-body .tok-se, .diff-body .tok-sh, .diff-body .tok-si, .diff-body .tok-sx, .diff-body .tok-sr, .diff-body .tok-ss, .diff-body .tok-sa, .diff-body .tok-dl { color: var(--moss); }
+.diff-body .tok-m, .diff-body .tok-mi, .diff-body .tok-mf, .diff-body .tok-mh, .diff-body .tok-mo, .diff-body .tok-mb { color: var(--rose-mute); }
+.diff-body .tok-nf, .diff-body .tok-fm { color: var(--amber); }
+.diff-body .tok-nc, .diff-body .tok-ne { color: var(--amber-mute); }
+.diff-body .tok-nd, .diff-body .tok-na { color: var(--amber); }
+.diff-body .tok-nb, .diff-body .tok-bp, .diff-body .tok-nn { color: var(--indigo-mute); }
+.diff-body .tok-no, .diff-body .tok-nv { color: var(--ink-soft); }
+.diff-body .tok-nt { color: var(--indigo); }
+.diff-body .tok-ow { color: var(--indigo); }
+.diff-body .tok-gd { color: var(--diff-rem-text); }
+.diff-body .tok-gi { color: var(--diff-add-text); }
+.diff-body .tok-err { color: var(--rose-mute); }
+.line.hunk {
+  background: rgba(155, 179, 210, 0.05);
+  font-size: 11.5px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.line.hunk .code { color: var(--indigo-mute); }
+
+.line.concern-anchor::before,
+.line.suggest-anchor::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+}
+.line.concern-anchor::before { background: var(--amber); }
+.line.suggest-anchor::before { background: var(--indigo); }
+
+.line .pin {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 1px 7px;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.line.concern-anchor .pin {
+  color: var(--amber);
+  background: var(--amber-soft);
+  border: 1px solid rgba(232, 165, 85, 0.25);
+}
+.line.suggest-anchor .pin {
+  color: var(--indigo);
+  background: var(--indigo-soft);
+  border: 1px solid rgba(155, 179, 210, 0.25);
+}
+
+.line.focus.concern-anchor { background: var(--amber-focus); }
+.line.focus.suggest-anchor { background: var(--indigo-focus); }
+.line.focus .pin { transform: translateY(-50%) scale(1.05); }
+
+/* ───────────── findings column ───────────── */
+.findings-col .col-head { margin-bottom: 18px; }
+.findings-col .col-head h2 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+.toolbar button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.toolbar button:hover { color: var(--ink); border-color: var(--border-strong); }
+
+.cards { display: flex; flex-direction: column; gap: 10px; }
+
+.section-rule {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 8px;
+}
+.section-rule:first-child { margin-top: 0; }
+.section-rule h3 {
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.section-rule .ornament { flex: 1; height: 1px; background: var(--border); }
+.section-rule .count { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.section-rule.strengths h3 { color: var(--moss); }
+
+.finding {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--amber);
+  border-radius: 6px;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.finding.suggest { border-left-color: var(--indigo); }
+.finding.focus {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 1px var(--amber-mute), var(--shadow-card);
+}
+.finding.suggest.focus { box-shadow: 0 0 0 1px var(--indigo-mute), var(--shadow-card); }
+
+.finding > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 14px 10px 14px;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ink);
+  user-select: none;
+  transition: background 0.12s ease;
+}
+.finding > summary::-webkit-details-marker { display: none; }
+.finding > summary:hover { background: var(--surface-raised); }
+
+.finding .tag {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.finding.suggest .tag { color: var(--indigo); }
+.finding .num {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-weight: 500;
+}
+.finding .summary-text {
+  font-weight: 500;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.4;
+  min-width: 0;
+}
+.finding[open] .summary-text { color: var(--ink-mute); font-weight: 400; }
+.finding .where {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.finding .chevron {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  width: 14px;
+  text-align: center;
+  transition: transform 0.18s ease;
+}
+.finding[open] .chevron { transform: rotate(90deg); color: var(--ink-mute); }
+
+.finding .body {
+  padding: 4px 16px 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  animation: slip-down 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes slip-down {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.finding .body > p { padding-top: 10px; }
+.finding .body code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--bg);
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--amber);
+}
+.finding.suggest .body code { color: var(--indigo); }
+.finding .evidence {
+  display: block;
+  margin-top: 10px;
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 400;
+  font-variation-settings: 'opsz' 16;
+  font-size: 13px;
+  color: var(--ink-mute);
+  line-height: 1.55;
+  padding-left: 14px;
+  border-left: 1px solid var(--border-strong);
+}
+.finding .evidence::before {
+  content: 'Evidence';
+  font-style: normal;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  display: inline-block;
+  margin-right: 10px;
+  position: relative;
+  top: -1px;
+}
+.finding .evidence.source::before { content: 'Source'; }
+
+.recommend {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid var(--amber-mute);
+  border-radius: 99px;
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+.finding.suggest .recommend { border-color: var(--indigo-mute); color: var(--indigo); background: var(--indigo-soft); }
+
+.thread-status {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 3px;
+  background: var(--amber-soft);
+  color: var(--amber);
+  border: 1px solid rgba(232, 165, 85, 0.2);
+}
+.thread-link {
+  color: var(--indigo);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--indigo-mute);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.thread-link:hover { color: var(--ink); border-color: var(--ink); }
+
+/* strengths */
+.strength {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  line-height: 1.55;
+  padding: 4px 0;
+}
+.strength .dot { color: var(--moss-mute); font-size: 14px; }
+.strength code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--surface);
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--moss);
+}
+
+.recap {
+  margin-top: 20px;
+  padding: 14px 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--recap-bg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+}
+.recap .label { font-weight: 500; color: var(--ink-soft); }
+.recap .items { font-family: var(--mono); color: var(--amber); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="left">
+    <span class="brand">PR Walkthrough</span>
+    <a class="pr" href="{{ pr.url }}" target="_blank" rel="noopener" title="Open #{{ pr.number }} on GitHub"><span class="num">#{{ pr.number }}</span><span class="title-text">{{ pr.title }}</span><span class="ext">↗</span></a>
+  </div>
+
+  <nav class="chunk-nav">
+    <a class="arrow" href="{% if chunk.id == 1 %}overview.html{% else %}chunk-{{ '%02d' % (chunk.id - 1) }}.html{% endif %}" aria-label="Previous chunk">‹</a>
+    <details class="chunk-picker">
+      <summary>
+        <span class="progress">{{ '%02d' % chunk.id }} / {{ chunks|length }}</span>
+        <span class="label">{{ chunk.title }}</span>
+        <span class="caret">▾</span>
+      </summary>
+      <div class="chunk-menu">
+        <ol>
+          <li><a href="overview.html"><span class="check"></span><span>Narrative overview</span><span class="count">—</span></a></li>
+          {% for c in chunks %}
+          <li{% if c.id == chunk.id %} class="active"{% endif %}>
+            <a href="chunk-{{ '%02d' % c.id }}.html">
+              <span class="check">{% if c.id == chunk.id %}●{% endif %}</span>
+              <span>{{ c.id }}. {{ c.title }}</span>
+              <span class="count">{{ c.findings|length or '—' }}</span>
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </details>
+    <a class="arrow" href="{% if chunk.id < chunks|length %}chunk-{{ '%02d' % (chunk.id + 1) }}.html{% else %}#{% endif %}"{% if chunk.id >= chunks|length %} aria-disabled="true"{% endif %} aria-label="Next chunk">›</a>
+  </nav>
+
+  <div class="right">
+    <span class="badge concerns"><span class="n">{{ chunk.findings|selectattr('type', 'equalto', 'concern')|list|length }}</span>Concerns</span>
+    <span class="badge suggest"><span class="n">{{ chunk.findings|selectattr('type', 'equalto', 'suggestion')|list|length }}</span>Suggest.</span>
+    <span class="badge strengths"><span class="n">{{ chunk.strengths|length }}</span>Strengths</span>
+    <span class="badge recommend"><span class="n">{{ chunk.findings|selectattr('recommend_fix')|list|length }}</span>Recommend</span>
+  </div>
+</header>
+
+<div class="split">
+
+  <!-- ───────── diff column ───────── -->
+  <section class="col diff-col">
+    <div class="col-head">
+      <h2 class="chunk-title">{{ chunk.title }}</h2>
+      <span class="path">{% for f in chunk.files %}<a href="#">{{ f }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</span>
+    </div>
+    <p class="intro">{{ chunk.intro|safe }}</p>
+
+    <div class="diff">
+      <div class="diff-head">
+        <span class="path">{{ chunk.files|join(', ') }}</span>
+        <span class="stats-inline"><span class="add">+{{ chunk.additions }}</span><span class="rem">−{{ chunk.deletions }}</span></span>
+      </div>
+      <div class="diff-body{% if chunk.highlighted %} hl{% endif %}">
+{% for ln in chunk.diff_lines %}
+  {%- set anchor_finding = anchor_for_line(ln.new_line, chunk.findings) -%}
+  <div class="line {{ ln.kind }}{% if anchor_finding %} {{ anchor_finding.type }}-anchor{% endif %}"
+       {% if anchor_finding %}data-finding="f{{ anchor_finding.id }}"{% endif %}>
+    <span class="ln">{{ ln.old_line or '' }}</span>
+    <span class="ln">{{ ln.new_line or '' }}</span>
+    <span class="marker">{{ '+' if ln.kind == 'add' else '-' if ln.kind == 'rem' else ' ' }}</span>
+    <span class="code">{% if ln.html %}{{ ln.html|safe }}{% else %}{{ ln.text }}{% endif %}</span>
+    {% if anchor_finding and anchor_finding.anchor.lines[0] == ln.new_line %}<span class="pin">#{{ anchor_finding.id }}</span>{% endif %}
+  </div>
+{% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── findings column ───────── -->
+  <section class="col findings-col">
+    <div class="col-head">
+      <h2>Findings</h2>
+    </div>
+
+    <div class="toolbar">
+      <button type="button" id="expand-toggle">Expand all</button>
+    </div>
+
+    <div class="cards">
+      {% for f in chunk.line_anchored_findings %}{{ render_finding(f) }}{% endfor %}
+
+      {% if chunk.cross_cutting_findings %}
+      <div class="section-rule"><h3>Across the file</h3><span class="ornament"></span><span class="count">{{ chunk.cross_cutting_findings|length }}</span></div>
+      {% for f in chunk.cross_cutting_findings %}{{ render_finding(f) }}{% endfor %}
+      {% endif %}
+
+      {% if chunk.strengths %}
+      <div class="section-rule strengths"><h3>Strengths</h3><span class="ornament"></span><span class="count">{{ chunk.strengths|length }}</span></div>
+      {% for s in chunk.strengths %}
+      <div class="strength"><span class="dot">·</span><span>{{ s|safe }}</span></div>
+      {% endfor %}
+      {% endif %}
+
+      {% set recommended = chunk.findings|selectattr('recommend_fix')|list %}
+      {% if recommended %}
+      <div class="recap">
+        <span class="label">Recommended fixes for this chunk</span>
+        <span class="items">{% for f in recommended %}#{{ f.id }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+</div>
+
+<script>
+  // hover-sync between diff lines and finding cards
+  const lines = document.querySelectorAll('.line[data-finding]');
+  const lineGroups = {};
+  lines.forEach(l => {
+    const id = l.dataset.finding;
+    (lineGroups[id] = lineGroups[id] || []).push(l);
+  });
+
+  Object.entries(lineGroups).forEach(([id, group]) => {
+    const card = document.getElementById(id);
+    if (!card) return;
+
+    const focus = (on) => {
+      group.forEach(l => l.classList.toggle('focus', on));
+      card.classList.toggle('focus', on);
+    };
+
+    group.forEach(l => {
+      l.addEventListener('mouseenter', () => focus(true));
+      l.addEventListener('mouseleave', () => focus(false));
+      const pin = l.querySelector('.pin');
+      if (pin) {
+        pin.addEventListener('click', (e) => {
+          e.stopPropagation();
+          card.open = true;
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.add('focus');
+          setTimeout(() => card.classList.remove('focus'), 1200);
+        });
+      }
+    });
+
+    card.addEventListener('mouseenter', () => focus(true));
+    card.addEventListener('mouseleave', () => focus(false));
+  });
+
+  // expand-all toggle
+  document.getElementById('expand-toggle')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    const findings = document.querySelectorAll('details.finding');
+    const allOpen = [...findings].every(d => d.open);
+    findings.forEach(d => d.open = !allOpen);
+    btn.textContent = allOpen ? 'Expand all' : 'Collapse all';
+  });
+</script>
+</body>
+</html>

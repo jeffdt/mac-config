@@ -1,0 +1,8 @@
+{
+  "name": "runlayer-plugin",
+  "description": "Unified dynamic plugin that automatically includes all accessible connectors, skills, and Runlayer platform tools.",
+  "interface": {
+    "displayName": "Runlayer Plugin"
+  },
+  "mcpServers": "./.mcp.json"
+}

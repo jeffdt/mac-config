@@ -1,0 +1,61 @@
+-- DISPATCH entry template for ~/.hammerspoon/tentacle.lua
+--
+-- The current architecture does NOT use standalone per-site handler files.
+-- Instead, add two entries directly in tentacle.lua:
+--   1. SITE_PARSERS["<site>"]    -- if the site is new
+--   2. DISPATCH["<site>/<mode>"] -- one entry per (site, mode) pair
+--
+-- Copy these commented blocks into tentacle.lua and fill in the <<TODO>> markers.
+
+-- ── STEP 1: SITE_PARSERS entry (omit if the site already has one) ────────────
+--
+-- ["<<TODO: site-key>>"] = function(url)
+--   -- Use Lua patterns (not regex): %d for digits, [^/]+ for segments, %. for dots.
+--   -- Examples:
+--   --   GitHub PRs:   url:match("https?://github%.com/([^/]+)/([^/]+)/pull/(%d+)")
+--   --   Sentry:       url:match("https?://([^.]+)%.sentry%.io/issues/(%d+)")
+--   --   Linear:       url:match("https?://linear%.app/[^/]+/issue/([A-Z]+)%-(%d+)/?([^/?#]*)")
+--   local <<TODO: a>>, <<TODO: b>> = url:match("<<TODO: pattern>>")
+--   if <<TODO: a>> and <<TODO: b>>:match("^%d+$") then
+--     return { <<TODO: a>> = <<TODO: a>>, <<TODO: b>> = <<TODO: b>>, url = url }
+--   end
+-- end,
+
+-- ── STEP 2: DISPATCH entry ───────────────────────────────────────────────────
+--
+-- ["<<TODO: site-key>>/<<TODO: mode>>"] = function(p)
+--   -- p is the identifier table returned by SITE_PARSERS.
+--   -- Return tmux_spawn opts. All fields must be shell-safe strings.
+--   --
+--   -- Two common command shapes:
+--   --
+--   -- (1) Delegate to a shell launcher that handles env/worktree setup + execs pi:
+--   --       command = string.format("<<TODO: launcher>> %q", p.url)
+--   --
+--   -- (2) No setup needed; invoke pi with a slash command directly:
+--   --       command = string.format("pi %q", "/<<TODO: cmd>>")
+--   --
+--   -- workspace = tmux session name (created on demand if absent).
+--   -- Omit workspace entirely to use name as the session name (fresh-session mode).
+--   return {
+--     name      = string.format("<<TODO: emoji>> %s #%s", p.<<TODO: a>>, p.<<TODO: b>>),
+--     cwd       = os.getenv("HOME"),
+--     command   = string.format("<<TODO: launcher>> %q", p.url),
+--     workspace = "<<TODO: session name, e.g. 'workbench'>>",
+--   }
+-- end,
+
+-- ── After editing tentacle.lua ───────────────────────────────────────────────
+--
+-- Reload Hammerspoon:
+--   hs -c "hs.reload()"
+--
+-- Smoke-test (replace placeholders with real values):
+--   open "hammerspoon://tentacle?site=<<site>>&url=<<url>>&mode=<<mode>>"
+--
+-- Check tmux:
+--   tmux list-sessions
+--   tmux list-windows -t "<<session name>>"
+--
+-- Pull Hammerspoon console if something fails:
+--   hs -c "local c = hs.console.getConsole(true); local lines = c:asTable(); for i=math.max(1,#lines-15), #lines do print(tostring(lines[i])) end"
