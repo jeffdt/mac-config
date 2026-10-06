@@ -45,4 +45,4 @@ MCP tools require `owner` and `repo` parameters. Derive once from `gh repo view 
 
 ## Scope
 
-Main conversation only. The `pr-feedback-triage` and `pr-feedback-qa` subagents have their own routing and should not be changed. PR review orchestration now runs in the main conversation and follows this skill.
+Main conversation only. The `pr-feedback-triage` and `pr-feedback-qa` skills have their own routing and should not be changed. PR review orchestration now runs in the main conversation and follows this skill.

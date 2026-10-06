@@ -52,7 +52,7 @@ Also run `git diff <base>...HEAD` (try `main`, fall back to `master`) so you can
 
 Default path: read the JSON directly and categorize each item yourself. You can see the verbatim comment bodies and reason about them with full context.
 
-**Escape hatch:** if total comment count is high (>15) and the feedback is dominated by bot noise that would burn parent context, launch the `pr-feedback-triage` agent as a Task subagent (Opus model) and pass it the PR metadata. The agent uses the same fetch script and returns a structured report. Most PRs should NOT need this.
+**Escape hatch:** if total comment count is high (>15) and the feedback is dominated by bot noise that would burn parent context, invoke the `pr-feedback-triage` skill in a subagent (Opus model) and pass it the PR metadata. The skill uses the same fetch script and returns a structured report. Most PRs should NOT need this.
 
 For inline triage, apply this logic:
 
@@ -137,13 +137,13 @@ For each deferred item the user chose to ticket:
 
 ### Step 8: Conditional QA Verification
 
-Run the QA agent if EITHER condition is true:
+Run the `pr-feedback-qa` skill if EITHER condition is true:
 - Any `complex` items were implemented
 - 5 or more total fixes were made
 
-If triggered: launch the `pr-feedback-qa` agent as a Task subagent (Sonnet model). Pass it the list of implemented items and the PR number. Present its verdict to the user.
+If triggered: invoke the `pr-feedback-qa` skill inline (or in a Sonnet subagent if the diff is large). Pass it the list of implemented items and the PR number. Present its verdict to the user.
 
-If the QA agent reports PARTIAL or FAIL, present the gaps and ask the user how to proceed.
+If the QA report is PARTIAL or FAIL, present the gaps and ask the user how to proceed.
 
 ### Step 9: Pending-Review Cleanup
 
