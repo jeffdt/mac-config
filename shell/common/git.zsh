@@ -183,16 +183,27 @@ _pr_engine() {
 # architectural debate; defaults to claude, `--gpt`/`--pi` routes to GPT via pi.
 # Uses the feedback-style slot prep so discuss-mode on your own open PR reuses
 # your existing feature worktree rather than failing to check the branch out
-# twice; for others' PRs it falls back to a per-PR review slot.
+# twice; for others' PRs it falls back to a per-PR review slot. `--slot` skips
+# that reuse and always checks out a clean `pr:N` slot (what prr/prw do), for
+# reviewing what is on GitHub rather than a local feature worktree.
 prd() {
-    local engine nshift
-    _pr_engine "$1"; shift $nshift
+    local engine=claude slot=0
+    while true; do
+        case "$1" in
+            --gpt|--pi) engine=pi; shift ;;
+            --claude)   engine=claude; shift ;;
+            --slot)     slot=1; shift ;;
+            *) break ;;
+        esac
+    done
     local url="$1" prompt="$2"
     if [[ -z "$url" || -z "$prompt" ]]; then
-        echo "prd: usage: prd [--claude|--gpt] <pr-url> <prompt>" >&2
+        echo "prd: usage: prd [--claude|--gpt] [--slot] <pr-url> <prompt>" >&2
         return 1
     fi
-    _pr_feedback_prepare "$url" && exec "$engine" "$prompt"
+    local prep=_pr_feedback_prepare
+    (( slot )) && prep=_pr_prepare_slot
+    "$prep" "$url" && exec "$engine" "$prompt"
 }
 
 # Find the local worktree (if any) that already has `branch` checked out in
