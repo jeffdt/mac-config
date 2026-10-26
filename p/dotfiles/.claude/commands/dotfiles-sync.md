@@ -14,7 +14,7 @@ Steps:
      config -C "$HOME" config filter.abshome.clean '$HOME/.local/bin/dotfiles-normalize-home-paths'
    ```
    This filter neutralizes a known-benign drift: reinstalling the tmux-assistant-resurrect
-   tmux plugin rewrites the `command` hooks in `.claude/settings.json` /
+   tmux plugin rewrites the `command` hooks in `.claude/settings.portable.json` /
    `.pi/agent/settings.json` to a hardcoded absolute path. `.gitattributes` scopes the filter
    to just those two files, so `git status`/`diff`/`add` treat that specific drift as
    equivalent to the tracked `$HOME`-relative form and it never needs manual handling or
@@ -23,7 +23,7 @@ Steps:
    (`git diff --name-only HEAD`) — `git status -uall` will surface unrelated `$HOME` clutter
    (e.g. `.Trash`, app support files) since the work-tree is the whole home directory. Never
    run `git add -A` or `git add .`; only stage specific known dotfiles by name. If
-   `.claude/settings.json` or `.pi/agent/settings.json` show as modified for no reason other
+   `.claude/settings.portable.json` or `.pi/agent/settings.json` show as modified for no reason other
    than the tmux-assistant-resurrect path rewrite (step 2's filter should normally prevent
    this, but the index can have a stale cached stat right after the drift happens), run
    `config -C "$HOME" add <path>` on just that file — since the filtered content already
@@ -34,12 +34,29 @@ Steps:
    the pull isn't blocked.
 5. `config -C "$HOME" pull --ff-only origin main`. If it fails because an untracked file
    would be overwritten, back the local file up (copy it aside, don't delete) before retrying
-   — don't silently let either version win without checking the diff.
+   — don't silently let either version win without checking the diff. Before pulling, copy
+   `~/.claude/settings.json` aside (`cp ~/.claude/settings.json ~/.claude/settings.json.presync`)
+   and restore it afterward if it's gone: a machine that still tracks it will have git delete
+   it when the commit that untracked it comes down.
 6. If a stash was created, `config -C "$HOME" stash pop` and resolve any conflict markers by
    hand — read both sides, don't guess blindly. Validate any JSON file touched
    (`python3 -c "import json; json.load(open(path))"`) after editing.
-7. Review the diff of every tracked file about to be committed. If anything looks like it
-   weakens a security-relevant hook or permission (e.g. changes to `.claude/settings.json`
+7. Regenerate the Claude settings snapshot. `~/.claude/settings.json` is deliberately
+   untracked (it holds machine-specific and klaviyocli-managed values, including a gateway
+   key). Only its portable parts (hooks, permission lists, plugins, marketplaces) are tracked,
+   in `~/.claude/settings.portable.json`. That file is generated, never hand-edited, and is
+   rebuilt every sync so it can't go stale:
+   ```
+   jq -S '{hooks, permissions: (.permissions | {allow: ((.allow // []) | sort), deny: ((.deny // []) | sort), ask: ((.ask // []) | sort)}), enabledPlugins, extraKnownMarketplaces}' \
+     ~/.claude/settings.json > ~/.claude/settings.portable.json
+   ```
+   This runs after the pull on purpose. If step 5 pulled a changed snapshot (another machine
+   added something), regenerating would silently drop those entries, so first diff the pulled
+   snapshot against this machine's live values, show the user what's new, and offer to merge
+   it into the live `settings.json` before regenerating. Never write the snapshot back over
+   the live file wholesale.
+8. Review the diff of every tracked file about to be committed. If anything looks like it
+   weakens a security-relevant hook or permission (e.g. changes to `.claude/settings.portable.json`
    hooks, permission allowlists) in a way that doesn't match what the user asked for, stop
    and flag it before proceeding — don't commit it silently. If a hardcoded machine-specific
    absolute home path shows up (e.g. `/Users/hom/...`) in a file *not* already covered by the
@@ -49,14 +66,14 @@ Steps:
    nothing changes functionally on this machine. If it's a recurring source of drift like the
    tmux-assistant-resurrect case, consider adding it to `.gitattributes`'s `abshome` filter
    instead of hand-fixing it every sync.
-8. Stage only the specific tracked files that changed, commit with a short imperative message
+9. Stage only the specific tracked files that changed, commit with a short imperative message
    describing what changed, and push:
    ```
    config -C "$HOME" add <file1> <file2> ...
    config -C "$HOME" commit -m "<message>"
    config -C "$HOME" push
    ```
-9. If `.tmux.conf` was among the files pulled in step 5 (check with
+10. If `.tmux.conf` was among the files pulled in step 5 (check with
    `git diff --name-only <old-HEAD> <new-HEAD>` from step 5's output, or `config -C "$HOME"
    log --stat` if unsure), reload it for any running tmux server so the sync takes effect
    immediately, rather than leaving stale config running until the next manual reload or
@@ -65,6 +82,6 @@ Steps:
    tmux info &>/dev/null && tmux source-file ~/.tmux.conf
    ```
    Skip silently if no tmux server is running (the `tmux info` check above handles that).
-10. Report what was pulled, what was committed/pushed, whether `.tmux.conf` was reloaded, and
+11. Report what was pulled, whether the settings snapshot changed, what was committed/pushed, whether `.tmux.conf` was reloaded, and
     flag anything left unresolved (e.g. a file backed up for manual reconciliation, a stash
     entry still present).

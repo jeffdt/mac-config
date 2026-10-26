@@ -7,7 +7,7 @@
 # But track these config files
 !.gitignore
 !CLAUDE.md
-!settings.json
+!settings.portable.json
 !statusline.sh
 !statusline.py
 
