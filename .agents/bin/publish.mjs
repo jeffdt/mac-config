@@ -11,6 +11,7 @@ const SOURCE_WORKFLOWS_DIR = join(ROOT_DIR, "workflows");
 const SOURCE_AGENTS_DIR = join(ROOT_DIR, "agents");
 const SOURCE_AGENT_PROMPTS_DIR = join(ROOT_DIR, "agent-prompts");
 const SOURCE_SCRIPTS_DIR = join(ROOT_DIR, "scripts");
+const SOURCE_COMMANDS_DIR = join(ROOT_DIR, "commands");
 
 const CLAUDE_SKILLS_DIR = join(HOME, ".claude", "skills");
 const CLAUDE_COMMANDS_DIR = join(HOME, ".claude", "commands");
@@ -497,6 +498,14 @@ function validateSources() {
     validateWorkflow(workflowFile, errors);
   }
 
+  const handwrittenCommands = new Set(walkFiles(SOURCE_COMMANDS_DIR).map((path) => relative(SOURCE_COMMANDS_DIR, path)));
+  for (const workflowFile of walkFiles(SOURCE_WORKFLOWS_DIR).filter((path) => path.endsWith(".md"))) {
+    const frontmatter = parseFrontmatter(workflowFile, readFileSync(workflowFile, "utf8"), []);
+    if (frontmatter && handwrittenCommands.has(`${frontmatter.claude_command}.md`)) {
+      errors.push(`${displayPath(workflowFile)} claude_command collides with commands/${frontmatter.claude_command}.md`);
+    }
+  }
+
   return errors;
 }
 
@@ -526,6 +535,7 @@ function publishAll(options) {
   }
   manifest.targets.codexWorkflowSkills = codexWorkflowSkills.files;
   counts.codexWorkflowSkills = codexWorkflowSkills.written;
+  publishTree(SOURCE_COMMANDS_DIR, CLAUDE_COMMANDS_DIR, claudeCommands, { dryRun: options.dryRun });
   manifest.targets.claudeCommands = claudeCommands.files;
   counts.claudeCommands = claudeCommands.written;
 

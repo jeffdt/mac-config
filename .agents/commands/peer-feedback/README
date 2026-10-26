@@ -1,0 +1,55 @@
+---
+disable-model-invocation: true
+---
+
+# Peer Feedback Commands
+
+Commands for researching, drafting, and finalizing peer feedback.
+
+## Requirements
+
+- **Glean MCP server** must be configured for research queries
+- Run from your **Obsidian Vault** directory (where `Career/2025/` exists)
+
+## Workflow
+
+Run commands in this order:
+
+### 1. Research (once per person)
+```
+/peer-feedback:research Jane Smith
+```
+Searches Glean for projects and collaborations, creates a references file.
+
+### 2. Draft (iterate as needed)
+```
+/peer-feedback:draft Jane Smith
+```
+Interactive conversation to craft feedback. Run multiple times to revise:
+- Add comments under `# Draft Feedback` in the draft file
+- Run the command again to generate the next draft version
+
+### 3. Finalize (once complete)
+```
+/peer-feedback:finalize Jane Smith
+```
+Creates the final submission-ready file with copy buttons, deletes drafts.
+
+## Parallelizing Work
+
+While drafting feedback for one person, you can run research for the next person in the background so it's ready when you move on:
+
+```
+/peer-feedback:research John Doe
+```
+
+Then when you finish finalizing Jane's feedback, John's references are already gathered.
+
+## Output Structure
+
+```
+Career/2025/Peer Feedback/
+└── Jane Smith/
+    ├── References.md   # Research output
+    └── Final.md        # Submission-ready feedback
+```

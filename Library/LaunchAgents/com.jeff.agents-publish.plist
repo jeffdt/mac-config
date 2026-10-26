@@ -19,6 +19,8 @@
     <string>/Users/jeff.diteodoro/.agents/agents</string>
     <string>/Users/jeff.diteodoro/.agents/agent-prompts</string>
     <string>/Users/jeff.diteodoro/.agents/scripts</string>
+    <string>/Users/jeff.diteodoro/.agents/commands</string>
+    <string>/Users/jeff.diteodoro/.agents/workflows</string>
 		<string>/Users/jeff.diteodoro/.agents/instructions</string>
   </array>
 
