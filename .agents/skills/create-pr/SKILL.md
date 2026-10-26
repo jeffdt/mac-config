@@ -1,6 +1,6 @@
 ---
 name: create-pr
-version: 1.0.0
+version: 1.0.1
 description: This skill should be used when a slash command needs to create a pull request, or when autonomously deciding to "create a PR", "open a pull request", "create a draft PR", "submit for review", or "send this for review". It must also be loaded before running any `gh pr create` command as part of a larger workflow, including after completing implementation, executing plans, or wrapping up branch work. All PRs must be created as drafts with short, natural descriptions. Even when PR creation feels like the final step of a bigger task, this skill defines critical rules for draft mode, ticket linking, preflight checks, and description formatting that must be followed.
 ---
 
@@ -123,4 +123,3 @@ After the PR is created, inform the user with the full PR URL (see Guidelines be
 - Always attempt to find a ticket via auto-find before asking manually. Accept "none" only as an explicit user override
 - Follow the repository's PR template if it exists
 - **Always display the full PR URL as the visible text**, whether as plain text or as a hyperlink whose anchor text is the URL itself (e.g. `https://github.com/klaviyo/k-repo/pull/46137`, linked or not). Never hide the URL behind a bare `#46137` reference or any other anchor text that isn't the URL. This applies to the initial "PR created" message and to every later summary in the session that mentions this PR, including post-compaction summaries: the full URL must always be visible somewhere in the text so it can be copied straight out of the terminal.
-- **Always print the full PR URL as plain text** (e.g. `https://github.com/klaviyo/k-repo/pull/46137`), never as a bare `#46137` reference or a markdown link (`[#46137](...)`) with no visible URL. This applies to the initial "PR created" message and to every later summary in the session that mentions this PR, including post-compaction summaries: the full URL must always appear somewhere in plain text so it can be copied straight out of the terminal.

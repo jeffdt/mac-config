@@ -33,3 +33,4 @@
 # Re-ignore Python bytecode anywhere (must come after allowlists)
 **/__pycache__/
 **/*.pyc
+skills/synced/

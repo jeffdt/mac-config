@@ -17,6 +17,12 @@ const CLAUDE_COMMANDS_DIR = join(HOME, ".claude", "commands");
 const CLAUDE_AGENTS_DIR = join(HOME, ".claude", "agents");
 const CLAUDE_AGENT_PROMPTS_DIR = join(HOME, ".claude", "agent-prompts");
 const CLAUDE_SCRIPTS_DIR = join(HOME, ".claude", "scripts");
+const SOURCE_INSTRUCTIONS_DIR = join(ROOT_DIR, "instructions");
+const INSTRUCTION_TARGETS = {
+  claude: join(HOME, ".claude", "CLAUDE.md"),
+  pi: join(HOME, ".pi", "agent", "AGENTS.md"),
+  codex: join(HOME, ".codex", "AGENTS.md"),
+};
 const PI_GENERATED_AGENTS_DIR = join(HOME, ".pi", "agent", "agents", "generated");
 
 const MANIFEST_PATH = join(ROOT_DIR, ".publish-manifest.json");
@@ -572,6 +578,24 @@ function publishAll(options) {
   manifest.targets.piAgents = piAgents.files;
   counts.piAgents = piAgents.written;
 
+  const instructions = { files: [], written: 0 };
+  const sharedInstructions = join(SOURCE_INSTRUCTIONS_DIR, "AGENTS.md");
+  if (existsSync(sharedInstructions)) {
+    for (const [harness, targetPath] of Object.entries(INSTRUCTION_TARGETS)) {
+      const addOn = join(SOURCE_INSTRUCTIONS_DIR, `${harness}.md`);
+      const text = [
+        `<!-- Generated from ${displayPath(SOURCE_INSTRUCTIONS_DIR)}. Do not edit this copy directly; edit the source and run agents-publish. -->`,
+        "",
+        readFileSync(sharedInstructions, "utf8").trim(),
+        ...(existsSync(addOn) ? [readFileSync(addOn, "utf8").trim()] : []),
+        "",
+      ].join("\n");
+      publishTextFile(sharedInstructions, targetPath, text, instructions, options.dryRun);
+    }
+  }
+  manifest.targets.instructions = instructions.files;
+  counts.instructions = instructions.written;
+
   const previousManifest = readJson(MANIFEST_PATH, { targets: {} });
   const pruned = options.prune ? pruneStaleFiles(previousManifest, manifest, options.dryRun) : [];
   if (!options.dryRun) writeFileAtomic(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + "\n", 0o644, false);
@@ -620,6 +644,7 @@ function main() {
     console.log(`- Claude agent prompts: ${result.counts.claudeAgentPrompts}`);
     console.log(`- Claude scripts: ${result.counts.claudeScripts}`);
     console.log(`- Pi agents: ${result.counts.piAgents}`);
+    console.log(`- Global instruction files: ${result.counts.instructions}`);
     if (result.pruned.length > 0) console.log(`- Pruned stale files: ${result.pruned.length}`);
     if (!dryRun) console.log(`Manifest: ${displayPath(MANIFEST_PATH)}`);
   } finally {

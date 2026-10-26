@@ -35,7 +35,7 @@ Before spawning, decide:
   Sources for inferring the work area: file paths mentioned in the hint, files Claude has read or edited recently in this conversation, the deepest common ancestor of those paths capped at the service/component level. If the hint redirects to another repo ("spawn in fender for..."), apply the same granularity logic in that repo.
 
   **Why this matters:** Claude loads `CLAUDE.md` and path-scoped skills at init, walking up from cwd. Init-time context survives compaction; runtime discovery does not. A service-level cwd loads service + ancestor `CLAUDE.md` files automatically; the repo root misses all of them.
-- **Bash command for the tab** — the shell incantation that runs in the new tab. Default: `cd "$repo" && claude < "$prompt_path"`. If the use case needs more (e.g. a worktree, env setup), compose the bash inline. The command is intentionally not scripted — be explicit about what runs.
+- **Bash command for the tab** — the shell incantation that runs in the new tab. Default: `cd "$repo" && claude < "$prompt_path"`. If the use case needs more (e.g. a worktree via `wt switch --create <branch> -x 'claude < "$prompt_path"'`, env setup), compose the bash inline; this is where branch/worktree setup belongs, never in the prompt. The command is intentionally not scripted — be explicit about what runs.
 - **Tab title** — short label passed as `--title` to `mux spawn`. The goal is for the user to glance at the tab strip and know *which subject* each tab is about, not just which command is running. Kebab-case, no spaces, terminal-friendly.
 
   If the hint already names the subject (e.g. "fender CSRF token handling"), derive directly: `fender-csrf`.
@@ -43,6 +43,8 @@ Before spawning, decide:
   If the hint is an opaque reference the orchestrator hasn't actually looked at yet — a bare PR URL, ticket ID, Sentry issue, etc. — do a small lookup first to get a topical keyword before naming the tab. One `gh pr view N --json title` (or equivalent) per spawn is cheap and turns `pr-review-12345` into `review-cache-ttl-12345` — much easier to scan in the tab strip when several tabs are open. Do this triage during spawn-plan preparation, before showing the user the plan.
 
   Avoid title patterns that only encode the command and ID (`pr-review-12345`, `walkthrough-k-repo-29508`) when N>1 spawns are happening — they're indistinguishable in the tab strip.
+
+  Every title in a batch must be unique, and so must every title compared with the windows already in the target session (`mux list tabs`). When spawns share a subject (one feature across several repos, for example), lead with the part that differs, such as the repo or role: `infra-ops-console` and `k-repo-ops-console`, never two `pika-ops-console`. The branch name is not a tab title.
 - **Prompt body** — the text to write to a temp file and pipe into Claude. From step above.
 
 ## Confirm before spawning
@@ -82,7 +84,7 @@ The spawn flow:
 ## What NOT to include
 
 - Workflow instructions in the prompt ("use this skill", "create a worktree", "start by grepping for X"). Set up context; let the new session decide how to approach the work.
-- Branch / worktree management baked into the command itself. If the use case wants a worktree, the user includes that in the bash command they approve.
+- Branch / worktree instructions in the prompt. If the work needs a branch, bake `wt switch --create <branch>` into the bash command instead (branch naming per the user's global rules) and show it in the spawn plan; the plan approval is the gate. Only ask separately when the branch name or base is genuinely ambiguous.
 - Silent fallback when the multiplexer is unavailable. Pause and ask.
 
 ## After spawning

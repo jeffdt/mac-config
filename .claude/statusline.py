@@ -5,6 +5,66 @@ import json
 import os
 import subprocess
 import sys
+import time
+
+PR_CACHE = os.path.expanduser("~/.claude/cache/statusline-pr.json")
+PR_TTL_SECONDS = 120
+
+
+def refresh_pr_cache(repo_root, branch):
+    """Look up the single open (draft or ready) PR for a branch and cache its URL."""
+    result = subprocess.run(
+        ["gh", "pr", "list", "--head", branch, "--state", "open",
+         "--json", "number,url", "--limit", "2"],
+        cwd=repo_root, capture_output=True, text=True, timeout=10,
+    )
+    if result.returncode != 0:
+        return
+    prs = json.loads(result.stdout)
+    try:
+        with open(PR_CACHE) as f:
+            cache = json.load(f)
+    except (OSError, ValueError):
+        cache = {}
+    cache[f"{repo_root}:{branch}"] = {
+        "pr": prs[0] if len(prs) == 1 else None,
+        "at": time.time(),
+    }
+    tmp = f"{PR_CACHE}.{os.getpid()}"
+    with open(tmp, "w") as f:
+        json.dump(cache, f)
+    os.replace(tmp, PR_CACHE)
+
+
+def cached_pr(repo_root, branch):
+    """Return the cached PR for a branch, kicking off a background refresh when stale.
+
+    gh takes ~0.5s, too slow for the statusline (the gateway wrapper kills it at 2s),
+    so the lookup always runs detached and the next render picks up the result.
+    """
+    try:
+        with open(PR_CACHE) as f:
+            entry = json.load(f).get(f"{repo_root}:{branch}")
+    except (OSError, ValueError):
+        entry = None
+    if not entry or time.time() - entry["at"] > PR_TTL_SECONDS:
+        subprocess.Popen(
+            [sys.executable, __file__, "--refresh-pr", repo_root, branch],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, start_new_session=True,
+        )
+    return entry["pr"] if entry else None
+
+
+if len(sys.argv) == 4 and sys.argv[1] == "--refresh-pr":
+    refresh_pr_cache(sys.argv[2], sys.argv[3])
+    sys.exit(0)
+
+# Optional work-only module (gitignored) that surfaces gateway-routed models
+try:
+    from statusline_routing import routed_model_id
+except ImportError:
+    routed_model_id = None
 
 # Read JSON input from stdin
 data = json.load(sys.stdin)
@@ -64,15 +124,19 @@ if len(dir_name) > 30 and ".worktrees" not in parts_path:
 
 # Get git branch (truncate if > 20 chars)
 branch = ""
+pr = None
 try:
     result = subprocess.run(
-        ["git", "-C", cwd, "branch", "--show-current"],
+        ["git", "-C", cwd, "rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD"],
         capture_output=True,
         text=True,
         timeout=1,
     )
     if result.returncode == 0:
-        branch = result.stdout.strip()
+        repo_root, full_branch = result.stdout.split()
+        if full_branch != "HEAD":
+            pr = cached_pr(repo_root, full_branch)
+        branch = full_branch if full_branch != "HEAD" else ""
         if len(branch) > 20:
             branch = branch[:17] + "..."
 except Exception:
@@ -84,7 +148,7 @@ pct = ctx.get("used_percentage") or 0
 
 # Color: red at 90%+, otherwise cyan
 tok_color = red if pct >= 90 else c
-tok_display = f"{pct:.1f}%"
+tok_display = f"{pct:.0f}%"
 
 # Build output
 # Format:  dir ·  branch ·  4k
@@ -98,6 +162,12 @@ if branch:
     parts.append(f"{d}·{r}")
     parts.append(f"{g}{icon_branch} {branch}{r}")
 
+# Open PR for the branch, as a clickable OSC 8 link
+if pr:
+    link = f"\033]8;;{pr['url']}\033\\#{pr['number']}\033]8;;\033\\"
+    parts.append(f"{d}·{r}")
+    parts.append(f"{c}PR {link}{r}")
+
 # Context usage with icon (red at 90%+)
 parts.append(f"{d}·{r}")
 parts.append(f"{tok_color}{icon_tokens} {tok_display}{r}")
@@ -105,6 +175,10 @@ parts.append(f"{tok_color}{icon_tokens} {tok_display}{r}")
 # Model and reasoning effort level, colored per model family
 model = data.get("model", {})
 model_name = model.get("display_name", "")
+routed = routed_model_id(data.get("transcript_path", "")) if routed_model_id else ""
+if routed and routed != model.get("id", ""):
+    model = {"id": routed}
+    model_name = routed.removeprefix("claude-")
 effort = data.get("effort", {}).get("level", "")
 if model_name:
     haystack = f"{model.get('id', '')} {model_name}".lower()
@@ -115,4 +189,7 @@ if model_name:
     parts.append(f"{d}·{r}")
     parts.append(f"{model_color}{icon_model} {model_display}{r}")
 
+# The gateway wrapper appends its quota segment to our last non-blank line. A
+# reset-only second line counts as non-blank, which pushes that segment off line one.
 print(" ".join(parts))
+print(r)

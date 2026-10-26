@@ -19,6 +19,7 @@ For a generated workflow, use the Claude command named by `claude_command` (for 
 - `agents/`: Source agent prompts. The publisher renders Claude agents and Pi subagents from these files.
 - `agent-prompts/`: Shared prompt fragments used by agents.
 - `scripts/`: Shared helper scripts used by skills and agents.
+- `instructions/`: Global instruction sources. `AGENTS.md` is shared by every harness; `claude.md`, `pi.md` and `codex.md` are optional per-harness add-ons appended to it.
 
 ## Generated targets
 
@@ -28,6 +29,7 @@ For a generated workflow, use the Claude command named by `claude_command` (for 
 - `~/.claude/agent-prompts/`
 - `~/.claude/scripts/`
 - `~/.pi/agent/agents/generated/`
+- `~/.claude/CLAUDE.md`, `~/.pi/agent/AGENTS.md`, `~/.codex/AGENTS.md` (built from `instructions/`)
 
 Do not edit generated target files directly. They will be overwritten by the next publish.
 

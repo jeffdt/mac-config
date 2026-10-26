@@ -35,14 +35,30 @@
 set -euo pipefail
 
 cli=claude
-if [[ "${1:-}" == "--cli" ]]; then
-  cli=${2:-}
-  shift 2
-  case "$cli" in
-    claude|codex|pi) ;;
-    *) echo "invalid --cli value: $cli (expected claude, codex, or pi)" >&2; exit 1 ;;
+launch_model=""
+launch_reasoning=""
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --cli) cli=${2:?missing CLI}; shift 2 ;;
+    --model) launch_model=${2:?missing model}; shift 2 ;;
+    --reasoning-effort) launch_reasoning=${2:?missing reasoning effort}; shift 2 ;;
+    *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
+done
+case "$cli" in
+  claude|codex|pi) ;;
+  *) echo "invalid --cli value: $cli (expected claude, codex, or pi)" >&2; exit 1 ;;
+esac
+if [[ -n "$launch_model$launch_reasoning" && "$cli" != codex ]]; then
+  echo "model and reasoning options require --cli codex" >&2; exit 1
 fi
+if [[ -n "$launch_model" && ! "$launch_model" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+  echo "invalid model name" >&2; exit 1
+fi
+case "$launch_reasoning" in
+  ""|none|minimal|low|medium|high|xhigh|max|ultra) ;;
+  *) echo "invalid reasoning effort" >&2; exit 1 ;;
+esac
 
 if (( $# == 0 )) || (( $# % 4 != 0 )); then
   echo "usage: $0 [--cli claude|codex|pi] <repo_path> <prompt_path> <branch> <subdir_relative> [<repo> <prompt> <branch> <subdir> ...]" >&2
@@ -58,12 +74,20 @@ build_launch_cmd() {
   fi
   local base_flag=""
   [[ -n "$base" ]] && base_flag=" --base $base"
+  local switch_flag=" --create"
+  if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
+    switch_flag=""
+    base_flag=""
+  fi
+  local codex_flags=""
+  [[ -n "$launch_model" ]] && codex_flags+=" --model $launch_model"
+  [[ -n "$launch_reasoning" ]] && codex_flags+=" -c model_reasoning_effort=$launch_reasoning"
   case "$cli" in
     claude)
       printf 'cd %s && wt switch --create %s%s -x "cd %s && cat %s | claude"' "$repo" "$branch" "$base_flag" "$subdir" "$prompt"
       ;;
     codex)
-      printf 'cd %s && wt switch --create %s%s -x "cd %s && codex --full-auto \\"\$(cat %s)\\""' "$repo" "$branch" "$base_flag" "$subdir" "$prompt"
+      printf 'cd %s && wt switch%s %s%s -x "cd %s && codex -a on-request --sandbox workspace-write%s \\"\$(cat %s)\\""' "$repo" "$switch_flag" "$branch" "$base_flag" "$subdir" "$codex_flags" "$prompt"
       ;;
     pi)
       printf 'cd %s && wt switch --create %s%s -x "cd %s && pi \\"\$(cat %s)\\""' "$repo" "$branch" "$base_flag" "$subdir" "$prompt"
