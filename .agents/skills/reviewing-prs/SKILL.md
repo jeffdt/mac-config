@@ -1,6 +1,6 @@
 ---
 name: reviewing-prs
-version: 1.0.0
+version: 1.1.0
 description: "Use before reviewing an existing GitHub pull request, checking whether a PR is ready to merge, or responding to requests such as \"review PR #123\", \"look at this pull request\", or \"review the PR for my current branch\". Runs orchestration in the main session and directly dispatches specialized reviewers so the Claude task hierarchy stays at two layers."
 ---
 
@@ -58,7 +58,8 @@ These are guidelines, not hard rules. Use judgment — a 30-line auth change may
   ```bash
   node "$(ls -t ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | head -1)" review --wait --scope branch
   ```
-  Then proceed to **Step 7** with both your inline analysis and Codex's output as inputs to the synthesis. Codex always runs; small PRs can be small-but-critical (auth, migrations), and second-opinion value is the same regardless of PR size.
+  In that same response, also launch the Ponytail Task (see **Ponytail reviewer** in Step 6).
+  Then proceed to **Step 7** with your inline analysis, Codex's output, and Ponytail's output as inputs to the synthesis. Codex and Ponytail always run; small PRs can be small-but-critical (auth, migrations), and second-opinion value is the same regardless of PR size.
 - **Medium or Large PR**: Continue to **Step 5**.
 
 **Step 5 — Read Reviewer Prompts**
@@ -68,11 +69,18 @@ Read all 3 reviewer prompt files from `/Users/jeff.diteodoro/.agents/agent-promp
 - `code-quality.md`
 - `security-and-performance.md`
 
-**Step 6 — Dispatch Specialized Reviewers (Including Codex)**
+Also read the latest installed ponytail-review skill for the Ponytail reviewer:
 
-Launch 4 parallel review sources directly from the main session in a single response so they run concurrently:
+```bash
+cat "$(ls -t ~/.claude/plugins/cache/ponytail/ponytail/*/skills/ponytail-review/SKILL.md | head -1)"
+```
+
+**Step 6 — Dispatch Specialized Reviewers (Including Codex and Ponytail)**
+
+Launch 5 parallel review sources directly from the main session in a single response so they run concurrently:
 
 - 3 Claude Task subagents using `subagent_type: "general-purpose"` (Meta, Code Quality, Security & Performance); each prompt combines the reviewer's instructions with the relevant PR context.
+- 1 Ponytail Task subagent (see **Ponytail reviewer** below).
 - 1 Codex review via Bash, invoking the codex-companion runtime against the branch diff:
 
 ```bash
@@ -81,14 +89,16 @@ node "$(ls -t ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-compani
 
 The Codex call resolves the codex-companion script from the plugin cache at invocation time (latest installed version wins, robust to upgrades). `CLAUDE_PLUGIN_ROOT` is intentionally NOT used here because this agent is a user agent, not a component of the codex plugin, so that variable is unset at Bash time. Codex's review covers the same branch diff vs the default base that Claude reviewers see. It acts as a second LLM perspective on the same code, not a different review framing.
 
+**Ponytail reviewer:** a `general-purpose` Task on `sonnet` for every tier (Small included). Its prompt is the ponytail-review SKILL.md body (frontmatter stripped) plus the full PR diff, using the same Task prompt structure below. It hunts over-engineering only (delete / stdlib / native / yagni / shrink) and ends with `net: -<N> lines possible.` or `Lean already. Ship.` If the `cat` above finds no file, skip the Task and record Ponytail as `unavailable — plugin not installed`.
+
 Mix Bash and Task tool calls in the same parallel response. Claude Code will execute them concurrently.
 
 **Model selection per tier:**
 
-| PR Complexity | Meta | Code Quality | Security & Performance | Codex | Synthesizer |
-|---|---|---|---|---|---|
-| Medium | sonnet | sonnet | sonnet | (default) | current main-session model |
-| Large | sonnet | opus | opus | (default) | current main-session model |
+| PR Complexity | Meta | Code Quality | Security & Performance | Codex | Ponytail | Synthesizer |
+|---|---|---|---|---|---|---|
+| Medium | sonnet | sonnet | sonnet | (default) | sonnet | current main-session model |
+| Large | sonnet | opus | opus | (default) | sonnet | current main-session model |
 
 Set the `model` parameter on each Task accordingly. Meta always uses `sonnet`. Codex uses its built-in review model. Pass no model flag.
 
@@ -112,13 +122,13 @@ Do not launch subagents. Perform this review yourself and return your findings d
 [Paste the relevant context here]
 ```
 
-Launch all 3 Tasks AND the Codex Bash call directly from the main session in a single message so they run in parallel.
+Launch all 4 Tasks AND the Codex Bash call directly from the main session in a single message so they run in parallel.
 
 **Step 7 — Synthesize Unified Report**
 
 Collect findings from all sources:
-- Medium/Large PRs: 3 Claude Task reviewers (Meta, Code Quality, Security & Performance) + Codex review output.
-- Small PRs: your inline analysis + Codex review output.
+- Medium/Large PRs: 3 Claude Task reviewers (Meta, Code Quality, Security & Performance) + Codex review output + Ponytail output.
+- Small PRs: your inline analysis + Codex review output + Ponytail output.
 
 Codex's output is prose with structured findings (severity, file:line refs, recommendations). Treat it as one more reviewer source for dedup and merge purposes. Deduplicate findings that overlap across reviewers. Rank by severity. Produce this exact report format:
 
@@ -134,6 +144,7 @@ Codex's output is prose with structured findings (severity, file:line refs, reco
   - `ran — N findings incorporated (X unique to Codex)` if Codex returned findings
   - `ran — no findings` if Codex completed cleanly with nothing to flag
   - `unavailable — <reason>` if the Bash call failed (e.g. `permission denied`, `CLI not installed`, `auth missing`, `timeout`, `non-zero exit: <code>`)
+- Ponytail: [MANDATORY, never omit] `ran — net -N lines possible (K findings incorporated, X unique)`, `ran — lean already`, or `unavailable — <reason>`
 
 ## Risk Profile
 
@@ -201,9 +212,10 @@ Summary: [2-3 sentences with clear next steps]
 - If multiple reviewers flag the same issue, keep only the most detailed version and note which reviewers flagged it
 - Codex is one of the reviewers for dedup purposes. If Codex and a Claude reviewer flag the same issue, dedup as you would across two Claude reviewers. If Codex flags an issue no Claude reviewer caught (or vice versa), keep it. That's exactly the second-opinion value.
 - Track two counts for the PR Overview Codex line: `N` = total findings from Codex that survived dedup into the final report, `X` = of those, how many were unique to Codex (not also flagged by any Claude reviewer). `X` is the second-opinion signal — when it's consistently 0, Codex isn't earning its keep on this PR mix.
+- Ponytail findings dedup the same way, and `X` means the same thing: findings no other reviewer flagged. Tag them **Simplicity** and file them as Suggestions by default, keeping the ponytail tag and replacement in the text (e.g. `**[S2] Simplicity**: yagni: AbstractRepository with one implementation, inline it (repo.py:88)`). Promote to Important only for a new dependency that stdlib/native already covers, or a cut of roughly 30+ lines. Never drop a Ponytail finding because a Claude reviewer called the same code fine; disagreement is the signal.
 - Findings severity: Critical > Important > Suggestion. Promote any finding to Critical if it could cause data loss, security breach, or production outage.
 - If a findings section has no items, omit it entirely — do not include empty sections
-- Tag each finding with a concern category in bold: **Security**, **Performance**, **Correctness**, **Reliability**, **Maintainability**, or **Convention**. These replace reviewer source tags.
+- Tag each finding with a concern category in bold: **Security**, **Performance**, **Correctness**, **Reliability**, **Maintainability**, **Simplicity**, or **Convention**. These replace reviewer source tags.
 - The Verdict ratings should reflect the synthesized view across all reviewers
 - **Risk Profile**: Synthesize Scale from Meta's change scale metrics (file/line counts, breakdown). Synthesize Blast Radius, Sensitivity, and Reversibility from Security & Performance's risk signals. For small PRs where you do inline review, assess all four dimensions yourself. The Verdict's Risk line should be a single-sentence synthesis of the Risk Profile table.
 - End on a constructive note with clear next steps
@@ -211,6 +223,7 @@ Summary: [2-3 sentences with clear next steps]
 **Important Reminders:**
 - Always start by fetching PR data — never review without the actual diff
 - If the Codex Bash call fails (non-zero exit, permission denied, codex CLI not installed, auth missing, timeout), do not block the review; proceed with the Claude reviewer outputs only. Record the failure in the PR Overview Codex line as `unavailable — <reason>`, citing the most specific cause you can extract from the bash output (e.g. `permission denied`, `auth missing`, `non-zero exit: 1`). Do not retry.
+- Same for the Ponytail Task: if it fails, proceed without it and record `unavailable — <reason>`.
 - Be thorough but concise. Quality over quantity in findings.
 - Distinguish blocking vs non-blocking issues clearly
 - Acknowledge good decisions and well-written code

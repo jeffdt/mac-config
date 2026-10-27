@@ -1,0 +1,1 @@
+- Whenever possible, favor creating extensions over modifying source code directly.
