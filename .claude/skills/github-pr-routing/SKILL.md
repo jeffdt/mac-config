@@ -24,7 +24,7 @@ description: This skill should be used when performing any GitHub PR operation i
 | PR diff | `gh pr diff <number>` |
 | CI checks | `gh pr checks <number>` |
 | Checkout PR branch | `gh pr checkout <number>` |
-| Merge PR | `gh pr merge <number>` |
+| Merge PR | `gh pr merge <number>` (in k-repo, use `trunk merge` instead; see the `trunk-merge-queue` skill) |
 | Mark ready for review | `gh pr ready <number>` |
 | Post a comment | `gh pr comment <number>` |
 | Submit a review | `gh pr review <number>` |

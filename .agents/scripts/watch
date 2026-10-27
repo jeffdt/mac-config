@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Run a check command until it settles, then print its last output and loop
+# a sound so the person at the desk hears it.
+#
+# usage: watch [-i poll-seconds] [-t timeout-seconds] -- <check command...>
+#
+# The check's exit code decides:  0  done, success (Glass)
+#                                 1  done, failure (Basso)
+#                                 anything else: still waiting, poll again
+# A timeout counts as a failure. Exits with the check's final code (1 on
+# timeout). WATCH_OK_SOUND, WATCH_BAD_SOUND and WATCH_SECONDS override the
+# sounds and how long they loop (default 10 seconds).
+set -uo pipefail
+
+poll=90 timeout=0
+while getopts "i:t:" opt; do
+	case $opt in
+	i) poll=$OPTARG ;;
+	t) timeout=$OPTARG ;;
+	*) exit 2 ;;
+	esac
+done
+shift $((OPTIND - 1))
+[[ ${1:-} == -- ]] && shift
+(($#)) || { echo "usage: watch [-i poll] [-t timeout] -- <check command...>" >&2; exit 2; }
+
+ok_sound=${WATCH_OK_SOUND:-/System/Library/Sounds/Glass.aiff}
+bad_sound=${WATCH_BAD_SOUND:-/System/Library/Sounds/Basso.aiff}
+loop_seconds=${WATCH_SECONDS:-10}
+
+alarm() {
+	local end=$((SECONDS + loop_seconds))
+	while ((SECONDS < end)); do afplay "$1"; done
+}
+
+started=$SECONDS
+while true; do
+	output=$("$@" 2>&1)
+	code=$?
+	case $code in
+	0) echo "$output"; alarm "$ok_sound"; exit 0 ;;
+	1) echo "$output"; alarm "$bad_sound"; exit 1 ;;
+	esac
+	if ((timeout > 0 && SECONDS - started >= timeout)); then
+		echo "Gave up after ${timeout}s; last check said: $output"
+		alarm "$bad_sound"
+		exit 1
+	fi
+	sleep "$poll"
+done

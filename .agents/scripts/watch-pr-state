@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# One check of a PR, for `watch`: exit 0 merged, 1 closed or failed, 3 still
+# going. Prints one line saying why.
+#
+# usage: watch-pr-state <pr-number>   (run inside a checkout of the PR's repo)
+#
+# Failure means closed without merging, the Trunk merge queue's newest state
+# is Failed or Cancelled, or a CI check on the head commit failed. Repos
+# without Trunk use only GitHub's state and checks.
+set -uo pipefail
+
+pr=${1:?usage: watch-pr-state <pr-number>}
+cd "$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "run it inside a checkout"; exit 2; }
+
+case $(gh pr view "$pr" --json state -q .state 2>/dev/null) in
+MERGED) echo "#$pr merged"; exit 0 ;;
+CLOSED) echo "#$pr was closed without merging"; exit 1 ;;
+esac
+
+# Trunk's status lists the PR's whole history; only the newest entry is its state now.
+if [[ -f .trunk/trunk.yaml ]] && command -v trunk >/dev/null; then
+	latest=$(trunk merge status "$pr" --no-progress 2>/dev/null |
+		sed $'s/\x1b\\[[0-9;]*m//g' | grep -E '^ *[0-9]{2}-[0-9]{2} ' | tail -1 | sed -E 's/ +/ /g')
+	if [[ $latest =~ Failed|Cancelled ]]; then
+		echo "#$pr left the merge queue:$latest"
+		exit 1
+	fi
+fi
+
+failing=$(gh pr checks "$pr" --json name,bucket \
+	-q '.[] | select(.bucket == "fail" and (.name | startswith("Trunk Merge Queue") | not)) | .name' 2>/dev/null)
+if [[ -n $failing ]]; then
+	echo "#$pr has failing checks: ${failing//$'\n'/, }"
+	exit 1
+fi
+
+echo "#$pr still open${latest:+:$latest}"
+exit 3
