@@ -1,0 +1,12 @@
+#!/bin/bash
+# usage: watch-appfile-bump <infra-deployment dir> <appfile path> <k-repo dir> <merge sha>
+# Exits 0 once the appfile on master was bumped to a k-repo commit that contains <merge sha>, else 3.
+INFRA=$1 APPFILE=$2 KREPO=$3 SHA=$4
+git -C "$INFRA" fetch -q origin master 2>/dev/null || { echo "infra fetch failed"; exit 3; }
+git -C "$KREPO" fetch -q origin main 2>/dev/null || { echo "k-repo fetch failed"; exit 3; }
+for c in $(git -C "$INFRA" log origin/master -10 --format=%s -- "$APPFILE" | grep -o 'to [0-9a-f]\{40\}' | cut -c4-); do
+  if git -C "$KREPO" merge-base --is-ancestor "$SHA" "$c" 2>/dev/null; then
+    echo "appfile bumped to $c, which contains ${SHA:0:11}"; exit 0
+  fi
+done
+echo "no appfile bump containing ${SHA:0:11} yet"; exit 3

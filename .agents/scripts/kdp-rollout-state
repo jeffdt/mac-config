@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# One check of a KDP rollout, for `watch` or a one-off: exit 0 every serving
+# pod runs the image that ships <merge-sha>, 3 not there yet (or can't tell
+# yet), 2 bad usage. Prints one line saying why.
+#
+# usage: kdp-rollout-state <appfile> <merge-sha> <kube-context> [pod-regex]
+#   appfile       path inside infrastructure-deployment, e.g. apps/amplify-agents/pika/app.yaml
+#   merge-sha     the k-repo merge commit you want live
+#   kube-context  e.g. dev-fern-use1-1 (find it with `klaviyocli k8s dev list-pods -n <ns> --all-contexts`)
+#   pod-regex     serving pods to require; default: every enabled target in $FLEET,
+#                 each of which must have a Running pod
+#
+# Env: FLEET (default dev), INFRA (default ~/r/infrastructure-deployment),
+# KREPO (default ~/r/k-repo).
+# Loads ~/.aws/saml2aws_session when present, since s2a-login writes the live
+# session there, not to ~/.aws/credentials.
+set -uo pipefail
+
+appfile=${1:?usage: kdp-rollout-state <appfile> <merge-sha> <kube-context> [pod-regex]}
+sha=${2:?merge sha required}
+ctx=${3:?kube context required}
+INFRA=${INFRA:-$HOME/r/infrastructure-deployment}
+KREPO=${KREPO:-$HOME/r/k-repo}
+
+[[ -f $HOME/.aws/saml2aws_session ]] && source "$HOME/.aws/saml2aws_session"
+
+git -C "$INFRA" fetch -q origin master 2>/dev/null || { echo "infra fetch failed"; exit 3; }
+git -C "$KREPO" fetch -q origin main 2>/dev/null || { echo "k-repo fetch failed"; exit 3; }
+
+# The image tag is a content hash, not a commit; the bump commit's subject is the
+# only link back to k-repo. Pods follow the newest bump, so it must contain the
+# merge; take the image from that commit's own diff.
+read -r bump target < <(git -C "$INFRA" log origin/master -20 --format='%h %s' -- "$appfile" |
+	sed -nE 's/^([0-9a-f]+) Updating appfile for .* to ([0-9a-f]{40}).*/\1 \2/p' | head -1)
+git -C "$KREPO" merge-base --is-ancestor "$sha" "${target:-x}" 2>/dev/null ||
+	{ echo "no appfile bump contains ${sha:0:11} yet (newest: ${bump:-none})"; exit 3; }
+image=$(git -C "$INFRA" show "$bump" -- "$appfile" | sed -nE 's/^\+ *image: *//p' | head -1)
+[[ -n $image ]] || { echo "bump $bump changed no image line"; exit 3; }
+
+spec=$(git -C "$INFRA" show "origin/master:$appfile")
+name=$(sed -nE 's/^  name: *//p' <<<"$spec" | head -1)
+ns=$(sed -nE 's/^  namespace: *//p' <<<"$spec" | head -1)
+# Default: every enabled target in $FLEET, as <name>-<target>-<replicaset>-<pod>.
+targets=$(awk -v fleet="${FLEET:-dev}" '
+	/^targets:/ {t = 1; next}
+	t && /^[^ ]/ {t = 0}
+	t && /^  - name:/ {flush(); n = $3; f = ""; e = ""}
+	t && /^    fleet:/ {f = $2}
+	t && /^    enabled:/ {e = $2}
+	function flush() { if (n != "" && f == fleet && e == "true") print n }
+	END {flush()}' <<<"$spec")
+pods=${4:-}
+if [[ -z $pods ]]; then
+	[[ -n $targets ]] || { echo "no enabled ${FLEET:-dev} targets in $appfile"; exit 2; }
+	pods="^$name-($(paste -sd'|' - <<<"$targets"))-[a-z0-9]+-[a-z0-9]+$"
+fi
+
+rows=$(kubectl --context "$ctx" -n "$ns" get pods --request-timeout=20s --no-headers \
+	-o 'custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[0].image,PHASE:.status.phase,READY:.status.containerStatuses[0].ready,GONE:.metadata.deletionTimestamp' \
+	2>/dev/null) || { echo "kubectl failed on $ctx (credentials? run s2a-login)"; exit 3; }
+
+# Failed and Succeeded pods are leftovers from old ReplicaSets; only Running counts.
+serving=$(awk -v re="$pods" '$1 ~ re && $3 == "Running"' <<<"$rows")
+[[ -n $serving ]] || { echo "no Running pods match $pods in $ns on $ctx"; exit 3; }
+if [[ -z ${4:-} ]]; then
+	for t in $targets; do
+		grep -qE "^$name-$t-[a-z0-9]+-[a-z0-9]+ " <<<"$serving" ||
+			{ echo "no Running pods for target $t yet"; exit 3; }
+	done
+fi
+stale=$(awk -v img="$image" '$2 !~ img"$" || $4 != "true" || $5 != "<none>" {print $1}' <<<"$serving" | paste -sd, -)
+total=$(wc -l <<<"$serving" | tr -d ' ')
+if [[ -n $stale ]]; then
+	echo "waiting on $stale (want ${image##*:}, bump $bump)"
+	exit 3
+fi
+echo "all $total serving pods on ${image##*:} and ready (bump $bump)"
+exit 0

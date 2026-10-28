@@ -128,7 +128,7 @@ A separate Linear document linked to the issue. Created **only when substantive*
 |---|---|
 | Team | AMPSS (unless context suggests otherwise) |
 | Priority | 3 (Normal) |
-| State | Triage |
+| State | Backlog. Never Triage; always pass `state: "Backlog"` explicitly |
 | Assignee | Unassigned |
 | Project | Inferred from context (see Project & Milestone Discovery) |
 | Milestone | Inferred from active milestone on the matched project |
@@ -178,7 +178,7 @@ project: <name> (<id>)            # or null
 milestone: <name> (<id>)          # or null
 labels: [<label1>, <label2>]      # or []
 priority: 3 (Normal)
-state: Triage
+state: Backlog
 assignee: null
 estimate: <points>                # or null
 parent: <identifier>              # or null
