@@ -1,6 +1,6 @@
 ---
 name: create-pr
-version: 1.0.1
+version: 1.1.0
 description: This skill should be used when a slash command needs to create a pull request, or when autonomously deciding to "create a PR", "open a pull request", "create a draft PR", "submit for review", or "send this for review". It must also be loaded before running any `gh pr create` command as part of a larger workflow, including after completing implementation, executing plans, or wrapping up branch work. All PRs must be created as drafts with short, natural descriptions. Even when PR creation feels like the final step of a bigger task, this skill defines critical rules for draft mode, ticket linking, preflight checks, and description formatting that must be followed.
 ---
 
@@ -112,6 +112,7 @@ Write a short, natural paragraph (2-4 sentences) explaining **why** the change e
 Use `gh pr create --draft` to create a draft PR:
 - Set the base branch to `main` or `master` (whichever exists)
 - Use the generated title and description
+- If the repo has a `reca-babysit` label (`gh label list --search reca-babysit --json name -q '.[].name' | grep -qx reca-babysit`), pass `--label reca-babysit` so Reca fixes CI failures and addresses Bugbot/CodeRabbit comments.
 
 After the PR is created, inform the user with the full PR URL (see Guidelines below on how to display it).
 
