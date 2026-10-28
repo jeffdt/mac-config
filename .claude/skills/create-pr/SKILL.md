@@ -1,6 +1,6 @@
 ---
 name: create-pr
-version: 1.0.1
+version: 1.2.0
 description: This skill should be used when a slash command needs to create a pull request, or when autonomously deciding to "create a PR", "open a pull request", "create a draft PR", "submit for review", or "send this for review". It must also be loaded before running any `gh pr create` command as part of a larger workflow, including after completing implementation, executing plans, or wrapping up branch work. All PRs must be created as drafts with short, natural descriptions. Even when PR creation feels like the final step of a bigger task, this skill defines critical rules for draft mode, ticket linking, preflight checks, and description formatting that must be followed.
 ---
 
@@ -60,9 +60,7 @@ If any check produces fixes, stage and commit them (using the `git-commit` skill
 
 ## Step 3: Simplify Pass
 
-Before creating the PR, run a quality pass on all branch changes by invoking `/pr:simplify`. This reviews the full branch diff for reuse opportunities, code quality, and efficiency issues, and fixes anything it finds.
-
-If `/pr:simplify` makes changes, stage and commit them (using the `git-commit` skill) before proceeding.
+Before creating the PR, invoke `/pr:simplify`. It gut-checks the diff size against the plan or title, runs independent simplicity reviews, applies the cuts they agree on, and commits them. Wait for it to finish (including any disagreements it asks the user about) before proceeding.
 
 ## Step 4: Verify Branch Status
 
@@ -112,9 +110,10 @@ Write a short, natural paragraph (2-4 sentences) explaining **why** the change e
 
 ## Step 8: Create the PR
 
-Use `gh pr create --draft` to create a draft PR:
+Use `CREATE_PR_SKILL=1 gh pr create --draft` to create a draft PR. The prefix is required: a hook blocks `gh pr create` without it so PRs can't skip this workflow.
 - Set the base branch to `main` or `master` (whichever exists)
 - Use the generated title and description
+- If the repo has a `reca-babysit` label (`gh label list --search reca-babysit --json name -q '.[].name' | grep -qx reca-babysit`), pass `--label reca-babysit` so Reca fixes CI failures and addresses Bugbot/CodeRabbit comments.
 
 After the PR is created, inform the user with the full PR URL (see Guidelines below on how to display it).
 

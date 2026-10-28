@@ -103,6 +103,20 @@ case "$tool" in
        && grep -Eq '[-][-]add-reviewer' <<<"$cmd"; then
       ask "This REQUESTS A REVIEW and pings the reviewer. Confirm with Jeff before requesting."
     fi
+    # Raw `gh pr create` skips the create-pr skill's preflight and simplify
+    # pass (plans often say "open the PR" and the model shortcuts straight to
+    # gh). The skill prefixes its command with CREATE_PR_SKILL=1.
+    if grep -Eq "${boundary}gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)" <<<"$cmd" \
+       && ! grep -q 'CREATE_PR_SKILL=1' <<<"$cmd"; then
+      jq -n '{
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: "Open PRs through the create-pr skill, not raw gh pr create. Load the create-pr skill and follow it: it runs tests, build, and the /pr:simplify size pass before creating the draft."
+        }
+      }'
+      exit 0
+    fi
     # Inverted: fires when `gh pr create` is missing --draft / -d.
     if grep -Eq "${boundary}gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)" <<<"$cmd" \
        && ! grep -Eq "([[:space:]])([-][-]draft|[-]d)([[:space:]]|=|$)" <<<"$cmd"; then
