@@ -1,14 +1,15 @@
 ---
 description: Summarize session outcomes for the orchestrating session
-allowed-tools: Bash(echo:*), Bash(pbcopy:*), Bash(mux:*)
-argument-hint: [--target <window>|<session:window>] [hint]
+allowed-tools: Bash(echo:*), Bash(pbcopy:*), Bash(mux:*), ListAgents, SendMessage, ToolSearch
+argument-hint: [--target <window>|<session:window>|<agent-name>] [hint]
 ---
 
 Summarize what happened in this session as a debrief for the orchestrating/planning session that dispatched this work. The output is pasted into a still-open planning session that already has full prior context, so this is a delta report, not a standalone prompt.
 
 **Arguments**: $ARGUMENTS
 
-If `$ARGUMENTS` begins with `--target <spec>`, extract `<spec>` and treat everything after it as the hint. `<spec>` is `[SESSION:]WINDOW`:
+If `$ARGUMENTS` begins with `--target <spec>`, extract `<spec>` and treat everything after it as the hint. `<spec>` is one of:
+- A Claude Code agent name exactly as `ListAgents` prints it (e.g. `agents-40`).
 - Bare `WINDOW` — a window in the caller's own tmux session (`mux`'s `caller` workspace).
 - `SESSION:WINDOW` — a window in another session.
 
@@ -64,7 +65,16 @@ The debrief is plain text (no markdown code fences wrapping the whole thing), le
 
 **No `--target`:** pipe the debrief to `pbcopy` via a Bash heredoc, exactly as before. Confirm to the user with a brief message: what the debrief covers and its status.
 
-**With `--target <spec>`:** before delivering, resolve the target and judge whether it's safe to auto-submit into:
+**With `--target <spec>`:** try native Claude Code messaging first, then fall back to tmux.
+
+**Native (preferred):**
+
+1. Call `ListAgents` (load `SendMessage` via ToolSearch `select:SendMessage` if deferred).
+2. If `<spec>` exactly matches a row's name, that is the target. Otherwise resolve the tmux window to its id: split `<spec>` on `:` (no colon means the caller's own session, from `mux status --json`), then find the window's `@id` in `mux list tabs --all`. The target is the row whose `tmux <session>:@<id>.%<pane>` matches that session and id.
+3. If exactly one row matches, send the debrief with `SendMessage` (`to`: the row name, with its ` [ref]` only if the name is duplicated). Busy targets are fine because the message queues. Confirm to the user: what the debrief covers, its status, and that it was sent natively to `<spec>` (name the agent). If the result reports that the message is held for approval or was refused, say so.
+4. If no row matches, more than one matches, or the send errors, continue to the tmux fallback below. This also covers pi and other non-Claude targets.
+
+**Tmux fallback:** resolve the target and judge whether it's safe to auto-submit into:
 
 1. Split `<spec>` on `:`. No colon → `--workspace caller --tab <spec>`. Colon present → `--workspace <session> --tab <window>`.
 2. Run `mux read --workspace <ws> --tab <tab> --lines 60` to capture the target pane's current screen. If this fails (exit 3, window/session not found), fall back to `pbcopy` and tell the user: `Target '<spec>' not found — copied to clipboard instead.`

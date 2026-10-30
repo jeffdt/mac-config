@@ -81,6 +81,8 @@ tmux display-message -p -t "$TMUX_PANE" '#{session_name}:#{window_index} #{windo
 
 ## Prefer `mux`
 
+**Messaging another Claude Code session?** Use the native `ListAgents` + `SendMessage` tools instead of `mux send`/`mux paste`. Each `ListAgents` row shows the peer's tmux location for mapping. Use `mux paste` only for pi, non-Claude panes, or when no native peer matches.
+
 `mux` (`~/.agents/scripts/mux`, symlinked from `~/.local/bin/mux`) is the
 allowlist-friendly wrapper around tmux, so `Bash(mux <verb>:*)` can be
 allowlisted.
