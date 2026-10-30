@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run a check command until it settles, then print its last output and loop
-# a sound so the person at the desk hears it.
+# Run a check command until it settles, then print its last output, loop a
+# sound briefly, and speak what finished so parallel watches are told apart.
 #
 # usage: watch [-i poll-seconds] [-t timeout-seconds] -- <check command...>
 #
@@ -9,7 +9,11 @@
 #                                 anything else: still waiting, poll again
 # A timeout counts as a failure. Exits with the check's final code (1 on
 # timeout). WATCH_OK_SOUND, WATCH_BAD_SOUND and WATCH_SECONDS override the
-# sounds and how long they loop (default 10 seconds).
+# sounds and how long they loop (default 3 seconds). Then it speaks
+# "Message from <tmux session>, <window>." (inside tmux) in WATCH_HEADER_VOICE
+# (default Daniel), followed by the check's last output line in the system
+# voice, so that line should say what happened ("CI passed", "Merged",
+# "Rollout complete"). WATCH_SAY=0 turns speech off.
 set -uo pipefail
 
 poll=90 timeout=0
@@ -26,11 +30,17 @@ shift $((OPTIND - 1))
 
 ok_sound=${WATCH_OK_SOUND:-/System/Library/Sounds/Glass.aiff}
 bad_sound=${WATCH_BAD_SOUND:-/System/Library/Sounds/Basso.aiff}
-loop_seconds=${WATCH_SECONDS:-10}
+loop_seconds=${WATCH_SECONDS:-3}
+header_voice=${WATCH_HEADER_VOICE:-Daniel}
 
 alarm() {
 	local end=$((SECONDS + loop_seconds))
 	while ((SECONDS < end)); do afplay "$1"; done
+	[[ ${WATCH_SAY:-1} == 0 ]] && return
+	local where=
+	[[ -n ${TMUX_PANE:-} ]] && where=$(tmux display-message -p -t "$TMUX_PANE" '#S, #W' 2>/dev/null)
+	[[ -n $where ]] && say -v "$header_voice" "Message from $where."
+	say "$(tail -n1 <<<"$output")."
 }
 
 started=$SECONDS
@@ -42,7 +52,13 @@ while true; do
 	1) echo "$output"; alarm "$bad_sound"; exit 1 ;;
 	esac
 	if ((timeout > 0 && SECONDS - started >= timeout)); then
-		echo "Gave up after ${timeout}s; last check said: $output"
+		echo "$output"
+		if ((timeout >= 60)); then
+			output="timed out after $((timeout / 60)) minutes"
+		else
+			output="timed out after $timeout seconds"
+		fi
+		echo "$output"
 		alarm "$bad_sound"
 		exit 1
 	fi
