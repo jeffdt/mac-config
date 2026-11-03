@@ -1,6 +1,6 @@
 ---
 name: watch-and-notify
-version: 1.4.0
+version: 1.5.0
 description: "Use when the user wants to be told, with a sound, when something outside this session finishes: a PR merging or failing CI, a deploy or rollout, a build, a migration, a long job. Triggers include \"watch it\", \"tell me when it merges\", \"ping me when it lands\", \"let me know when the deploy finishes\", \"play a sound when it's done\", \"afplay when it happens\", \"monitor this\". Not for waiting on work this session started in the background; the harness already reports that."
 ---
 
@@ -12,7 +12,7 @@ description: "Use when the user wants to be told, with a sound, when something o
 ~/.claude/scripts/watch [-i poll-seconds] [-t timeout-seconds] -- <check command...>
 ```
 
-The check's last output line is the outcome, so make it a short sentence saying what happened, not just "done": "CI passed", "Merged", "Spacelift apply finished", "Spacelift plan failed", "Rollout complete", "Rollout stalled". Detail for the terminal (failing check names, IDs) goes on earlier lines; only the last line is spoken. A timeout is spoken as "timed out after N minutes".
+The check's last output line is the outcome, so make it a short sentence naming the thing and saying what happened, not just "done": "k-repo PR merged", "pika rollout complete", "Spacelift apply finished", "Spacelift plan failed", "Rollout complete", "Rollout stalled". Detail for the terminal (failing check names, IDs) goes on earlier lines; only the last line is spoken. A timeout is spoken as "timed out after N minutes".
 
 The check's exit code decides each poll: `0` done and succeeded, `1` done and failed, anything else (use `3`) still waiting. A `-t` timeout counts as a failure. `watch` exits with the final code. The default poll is 90 seconds. `WATCH_OK_SOUND`, `WATCH_BAD_SOUND` and `WATCH_SECONDS` change the sounds and how long they loop; `WATCH_HEADER_VOICE` sets the voice for the "Message from" part (default Daniel); `WATCH_SAY=0` turns speech off.
 
@@ -24,7 +24,7 @@ Always start it with the Bash tool's `run_in_background`, and tell the user whic
 ~/.claude/scripts/watch -- ~/.claude/scripts/watch-pr-state [--until ci] <pr>   # run inside a checkout of the PR's repo
 ```
 
-By default success is merged (spoken "Merged"). With `--until ci`, success is every CI check finished with none failing (spoken "CI passed"); use it when the user wants to know when to open a draft for review. Failure is closed without merging ("Closed without merging"), the Trunk merge queue's newest state `Failed` or `Cancelled` ("Failed the merge queue"), or any failing CI check on the head commit ("CI failed"). `Not Ready`, `Pending` and `Testing` keep waiting. Repos without Trunk use only GitHub's state and checks.
+Outcomes are spoken with the repo name (from the `origin` remote) so parallel PR watches are told apart. By default success is merged (spoken "k-repo PR merged"). With `--until ci`, success is every CI check finished with none failing ("k-repo PR CI passed"); use it when the user wants to know when to open a draft for review. Failure is closed without merging ("k-repo PR closed without merging"), the Trunk merge queue's newest state `Failed` or `Cancelled` ("k-repo PR failed the merge queue"), or any failing CI check on the head commit ("k-repo PR CI failed"). `Not Ready`, `Pending` and `Testing` keep waiting. Repos without Trunk use only GitHub's state and checks.
 
 ## Anything else: write a small check
 

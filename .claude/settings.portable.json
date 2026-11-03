@@ -1,6 +1,5 @@
 {
   "enabledPlugins": {
-    "CLI@klaviyo-plugins": true,
     "code-simplifier@claude-plugins-official": true,
     "codex@openai-codex": true,
     "gateway@klaviyo-plugins": true,
@@ -60,6 +59,18 @@
           }
         ],
         "matcher": ""
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.claude/scripts/plan-size-nudge.sh",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Write"
       }
     ],
     "PreToolUse": [
@@ -198,9 +209,6 @@
       "Bash(yarn prettier:*)",
       "Bash(~/.claude/scripts/get-pr-feedback.sh:*)",
       "Read(~/Klaviyo/projects/mcp/**)",
-      "Skill(CLI:buildkite)",
-      "Skill(CLI:github)",
-      "Skill(CLI:linear)",
       "Skill(gc)",
       "Skill(gcp)",
       "Skill(gcpr)",
@@ -250,13 +258,6 @@
       "mcp__glean_default__read_document",
       "mcp__glean_default__search",
       "mcp__plugin_github_github__pull_request_read",
-      "mcp__plugin_linear_linear__get_document",
-      "mcp__plugin_linear_linear__get_issue",
-      "mcp__plugin_linear_linear__list_comments",
-      "mcp__plugin_linear_linear__list_issues",
-      "mcp__plugin_linear_linear__list_milestones",
-      "mcp__plugin_linear_linear__list_teams",
-      "mcp__plugin_linear_linear__list_users",
       "mcp__plugin_slack_slack__slack_read_channel",
       "mcp__plugin_slack_slack__slack_read_thread",
       "mcp__plugin_slack_slack__slack_search_channels",

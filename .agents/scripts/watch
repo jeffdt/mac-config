@@ -12,7 +12,7 @@
 # sounds and how long they loop (default 3 seconds). Then it speaks
 # "Message from <tmux session>, <window>." (inside tmux) in WATCH_HEADER_VOICE
 # (default Daniel), followed by the check's last output line in the system
-# voice, so that line should say what happened ("CI passed", "Merged",
+# voice, so that line should say what happened ("k-repo PR merged",
 # "Rollout complete"). WATCH_SAY=0 turns speech off.
 set -uo pipefail
 
