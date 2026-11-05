@@ -37,6 +37,7 @@ The following is a status report from another Claude Code session, summarizing w
 3. **Artifacts** — branch name, PR URL, tickets created or closed, files produced, or any other concrete outputs. Merge what you find in the pre-computed context with anything referenced in the conversation.
 4. **Decisions** — anything that diverged from the original plan, spec, or session prompt, and why. Include discoveries that changed the approach. Skip this section entirely if everything went as expected.
 5. **Unresolved** — open questions, loose ends, or follow-up work the orchestrating session should know about. Skip if nothing is unresolved.
+6. **Gotchas** — project-level papercuts this session hit that its own repo docs can't hold: wrong or stale content in the project's `CLAUDE.md`, `project-map.md`, `map/*`, or `roadmap.md`, or a cross-repo fact a future session would get wrong. For each, name the doc and line (if one misled the session) and the correct fact. Repo-local gotchas belong in that repo's docs, not here. Apply the same high bar as `/reflect`: skip this section unless something durable and costly surfaced, which is rare.
 
 ## Audience and voice
 

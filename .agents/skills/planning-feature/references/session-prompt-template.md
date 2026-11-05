@@ -46,7 +46,16 @@ When writing-plans finishes and asks you to choose an execution approach, pick o
 
 After all tasks pass both reviews, use /gcpr to commit, push, and create a draft PR. Then run /pr:temper to review and refine the PR.
 
-After /pr:temper finishes, use AskUserQuestion to ask whether to monitor CI and address feedback automatically (default: no). If yes: wait for the Buildkite build on the current HEAD to reach a terminal state via `mcp__buildkite__wait_for_build` (if that tool isn't available, fall back to `gh pr checks --watch --interval 60`, re-running if it hits the Bash timeout). Once the build is terminal, run /pr:hospital — it will auto-fix high-confidence CI failures and clear bot feedback, and surface ephemeral/needs-investigation items and debatable feedback for your confirmation.
+After /pr:temper finishes, watch CI without fixing anything yourself: the PR carries the `reca-babysit` label, so Reca pushes fixes for CI failures and bot feedback in the background. Loop:
+
+1. Wait for the Buildkite build on the PR's current HEAD to reach a terminal state via `mcp__buildkite__wait_for_build` (if that tool isn't available, fall back to `gh pr checks --watch --interval 60`, re-running if it hits the Bash timeout).
+2. Re-check the PR's HEAD SHA (`gh pr view --json headRefOid -q .headRefOid`). If it moved, Reca pushed; go back to step 1 for the new HEAD.
+3. If the build failed, Reca is likely working on it. Poll HEAD every 2 minutes for up to 20 minutes; on a new commit, go back to step 1. If nothing lands, stop and report the failing jobs (use `get_build_failure_summary`) so the user can decide.
+4. If the build passed and HEAD is stable, use AskUserQuestion to ask whether to mark the PR ready for review (`gh pr ready`). Mention any unresolved Bugbot/CodeRabbit threads in the question.
+
+Do not run /pr:hospital or push fixes; two agents pushing to the same branch will collide.
+
+After the mark-ready question is answered, run /reflect to check whether this session hit papercuts a future session would repeat. Expect it to usually find nothing. Fix this repo's docs directly (with approval); anything wrong in the project's own docs (CLAUDE.md, project map, roadmap) goes in the Gotchas section of /handoff:debrief instead.
 ```
 
 ## 2. <repo2> (`~/r/<repo2>`)

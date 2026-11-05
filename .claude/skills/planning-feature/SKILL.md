@@ -1,6 +1,6 @@
 ---
 name: planning-feature
-version: 1.1.0
+version: 1.3.0
 description: >-
   This skill should be used when the user asks to "plan a feature", says "let's plan...", "plan this
   work", "plan out this feature", or otherwise signals they want to kick off structured feature
@@ -148,3 +148,9 @@ The script:
 Surface all launched output from the script verbatim so the user sees which mode was used and which sessions were started. The script's printed launch command IS the command it sent — do not author a separate preview string above the invocation; that creates a second source of truth that can drift from what actually ran.
 
 **Do NOT bypass the script.** If `mux spawn` errors, if a workspace lookup fails, or anything else goes wrong, debug and fix the script — do not spawn tabs/windows manually as a workaround. Manual spawning re-authors the launch payload by hand, which is exactly how `cd <repo>` gets dropped and a worktree is created against the wrong repo.
+
+---
+
+## Step 6: Fold Debrief Gotchas Back Into Project Docs
+
+When a child session's `/handoff:debrief` arrives with a **Gotchas** section, this session owns the project docs it points at. For each gotcha, apply the `reflect` skill's Step 3 filter and Step 4 tracing to it: correct or delete the wrong content in `CLAUDE.md`, `project-map.md`, `map/*`, or `roadmap.md` rather than adding a contradicting note, keep map edits within `/project:map`'s rules, and never edit specs or prompts. Show proposed diffs and get approval before editing. Most debriefs have no Gotchas; do nothing in that case.

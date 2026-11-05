@@ -1,6 +1,7 @@
 ---
 name: reflect
-description: "This skill should be used only when the user explicitly asks for it — phrases like \"/reflect\", \"reflect on this session\", \"update AGENTS.md from what we learned\", or \"what should AGENTS.md have said\". Generic session wind-down language (\"wrap up\", \"summarize what we did\") is NOT sufficient to trigger it on its own. Reviews the current conversation for dead ends, backtracking, or corrections caused by gaps in a repo's AGENTS.md, and proposes targeted diffs — one per repo actually worked in this session — for the user to approve before any file is touched."
+version: 2.0.0
+description: "This skill should be used when the user explicitly asks for it (phrases like \"/reflect\", \"reflect on this session\", \"update AGENTS.md from what we learned\", \"what should the docs have said\") or when a workflow step explicitly calls for it, such as an implementation session reaching the mark-ready point of its PR. Generic session wind-down language (\"wrap up\", \"summarize what we did\") is NOT sufficient to trigger it on its own. Reviews the current conversation for papercuts a future session would hit again, traces each one to the doc that misled the session or the doc that should have prevented it, and proposes conservative diffs for the user to approve before any file is touched."
 ---
 
 > Generated from ~/.agents/skills/reflect/SKILL.md. Do not edit this copy directly.
@@ -8,59 +9,77 @@ description: "This skill should be used only when the user explicitly asks for i
 
 # Reflect
 
-Look back at this conversation for friction that a better `AGENTS.md` would have prevented, and propose fixing it. This is not a session summary and not a code review — it's narrowly about whether any repo's `AGENTS.md` should have said something it didn't.
+Look back at this conversation for friction that better docs would have prevented, and propose fixing it at its source. This is not a session summary and not a code review. It is narrowly about whether a doc a future session will read said something wrong, or failed to say something it should have.
 
-Runs entirely on the conversation already in context. Do not dispatch a subagent for this — a freshly spawned agent has none of this session's history, which is the only input this skill has.
+**Default outcome is nothing.** Most sessions produce no finding worth documenting. Saying "nothing worth documenting" in one line is a successful run.
 
-## Step 1: Identify repos actually worked in
+Runs entirely on the conversation already in context. Do not dispatch a subagent for this: a freshly spawned agent has none of this session's history, which is the only input this skill has.
 
-Scan the conversation for repos with real activity: file edits/writes, commands executed, or non-trivial multi-step exploration (an `Explore`/`Agent` dispatch, several rounds of `Grep`/`find`). A repo that was only glanced at — one `Read` for passing context, a single reference — does not count.
+## Step 1: Identify repos and projects actually worked in
 
-For each repo found, locate its root (nearest directory with its own `AGENTS.md`, `CLAUDE.md`, or `.git` above it) and its `AGENTS.md`. If a repo's `CLAUDE.md` is just an `@AGENTS.md` include (check its contents — this is the pattern used across `app`, `k-repo`, `fender`, `infrastructure-deployment`, and likely others), the target file is `AGENTS.md`, never `CLAUDE.md`. `~/.agents` itself counts like any other repo if it was worked in.
+Scan the conversation for repos with real activity: file edits/writes, commands executed, or non-trivial multi-step exploration (an `Explore`/`Agent` dispatch, several rounds of `Grep`/`find`). A repo that was only glanced at (one `Read` for passing context, a single reference) does not count.
 
-If nothing in the session rises to "worked in," say so and stop — don't force a finding.
+For each repo found, locate its root (nearest directory with its own `AGENTS.md`, `CLAUDE.md`, or `.git`). If a repo's `CLAUDE.md` is just an `@AGENTS.md` include (the pattern across `app`, `k-repo`, `fender`, `infrastructure-deployment`, and likely others), the target file is `AGENTS.md`, never `CLAUDE.md`. `~/.agents` counts like any other repo if it was worked in.
 
-## Step 2: Detect candidate gaps
+Also note whether the session ran under a project directory (`~/p/<project>` or `~/Klaviyo/projects/<project>`), or was seeded by a prompt that came from one (a session prompt citing a spec under `<project>/specs/`). That project's docs (`CLAUDE.md`, `project-map.md`, `map/*`, `roadmap.md`) are in scope for Step 4.
 
-Look across the conversation for these signal patterns:
+If nothing rises to "worked in," say so and stop.
 
-- **User corrections** revealing a stable codebase/repo fact ("no, that lives in X", "we always do Y here"). The strongest signal — direct evidence of a wrong assumption a doc could have prevented.
-- **Repeated exploration** — multiple `Explore`/`Grep`/`find` rounds, or an `Agent` dispatch, to locate something that turned out to have one well-known answer.
-- **Trial-and-error command failures** where the fix was a fixed convention (a required flag, a specific script to run instead of the obvious one) — not a one-off typo or environment fluke.
-- **Clarifying questions** the assistant had to ask whose answer is a stable repo fact rather than a task-specific decision.
+## Step 2: Detect candidate papercuts
 
-## Step 3: Filter for durability
+Look for these signals:
 
-Keep a candidate only if a *different* future session doing *different* work in the same repo would hit the same gap. Discard anything task-specific or one-off.
+- **User corrections** revealing a stable fact ("no, that lives in X", "the Makefile already handles that"). The strongest signal.
+- **Wrong actions that had to be undone**: a file created then deleted, a change reverted, a step done by hand that a script or `make` target already does (e.g. symlinking `.env` into a worktree when `make` already links it).
+- **Trial-and-error command failures** where the fix was a fixed convention (a required flag, a specific target or script instead of the obvious command), not a typo or environment fluke.
+- **Repeated exploration** to locate something that turned out to have one well-known answer.
+- **Acting on doc content that turned out wrong**: a path, command, or claim read from any doc (project map, README, AGENTS.md, a spec) that did not match reality.
 
-Re-read the repo's actual current `AGENTS.md` — don't rely on what's already in context from earlier in this session, since it may be stale relative to concurrent edits. Discard anything already covered there.
+## Step 3: Filter hard
 
-If nothing survives this filter for a given repo, don't propose anything for it.
+Keep a candidate only if all of these hold:
 
-## Step 4: Attribution triage
+1. **Durable**: a *different* future session doing *different* work here would hit it too.
+2. **Costly**: it wasted real effort (a wrong action, a revert, a user correction, several failed attempts), not just one extra search.
+3. **Non-obvious**: the wrong move looked reasonable. "The Makefile links `.env` into worktrees, don't symlink it by hand" passes. "Function X lives in file Y" fails; a search finds it.
+4. **Not already covered**: re-read the current target docs from disk (not from earlier context, which may be stale) and discard anything they already say correctly.
 
-For each surviving candidate, decide where the gap actually lives:
+If nothing survives, say "nothing worth documenting" and stop.
 
-- **Repo-specific** — the fact belongs to this codebase → carry it to Step 5.
-- **Global tool-caused** — a globally-defined skill, MCP server, or plugin steered the session wrong, and the same misguidance would recur in *any* repo, not just this one → do not draft an `AGENTS.md` edit for it; editing this one repo's docs wouldn't fix the actual cause. Instead, name the likely culprit (skill/MCP/plugin) and hold it for the closing callout in Step 5. Do not edit that skill/MCP/plugin as part of this flow — that's a separate, deliberate action (e.g. via `skill-creator`), not a side effect of `/reflect`.
+## Step 4: Trace each finding to its source
+
+For each survivor, ask: did the session act on something it read?
+
+- **Yes, a doc said something wrong or stale** → the fix target is *that doc*, wherever it lives: `project-map.md`, `map/*`, `roadmap.md`, a repo `README.md` or `AGENTS.md`, a doc under a repo's `docs/`. Propose correcting or deleting the wrong content. Never add a new note elsewhere that contradicts it; two disagreeing docs are worse than one wrong one.
+- **No, the knowledge was simply missing** → add it to the nearest doc a future session will actually load:
+  - Repo-specific fact → that repo's `AGENTS.md`.
+  - Cross-repo or project-wide fact → the project's `CLAUDE.md`.
+  - Setup or tooling fact a human also needs (dev setup, `make` targets) → the repo `README.md`, only if it already covers that topic; otherwise `AGENTS.md`.
+- **Global tool-caused**: a globally defined skill, MCP server, or plugin steered the session wrong in a way that would recur in any repo → no doc edit. Name the likely culprit for the closing callout. Do not edit it as part of this flow.
+
+Rules for specific doc types:
+
+- **Project maps** (`project-map.md`, `map/*`) follow the rules in `/project:map`: high bar for inclusion, no broken links, its fixed format. Propose the smallest fix that keeps those rules. If an area map is broadly stale, recommend re-running `/project:map <area>` instead of rewriting it here.
+- **Specs, plans, prompts, and other records of finished or in-flight work** are historical. Never edit them. If one misled the session, name it in the output and put the correct fact in a living doc instead.
+- **Docs outside this session's write scope** (e.g. an implementation session finding a wrong line in the parent project's map): do not edit. Report it as a project-level gotcha in the `/handoff:debrief` Gotchas section so the orchestrating session, which owns those files, can fix it.
 
 ## Step 5: Draft and present
 
-For each repo with at least one repo-specific finding:
-- Show the relevant existing `AGENTS.md` excerpt and the proposed addition as a diff — one or two terse bullets, matching that file's existing voice (clipped bullets, not prose; never an exhaustive file/directory listing).
-- Add a one-line rationale tying the addition to what actually happened in the session.
-- If the repo has no `AGENTS.md` at all, say so plainly instead of a diff — name the repo and the gap that would have gone in it. Do not create the file.
+For each target doc:
+- Show the relevant existing excerpt and the proposed change as a diff. Corrections and deletions first. Additions are one or two terse bullets matching the file's voice (clipped bullets, not prose; never an exhaustive file listing).
+- One-line rationale tying the change to what actually happened in the session.
+- If the right target doesn't exist (a repo with no `AGENTS.md`), say so plainly instead of creating it.
 
-If any findings were classified as global-tool-caused in Step 4, add one short callout at the end naming the likely culprit and suggesting it as a candidate for a separate follow-up review — not a diff, not an inline edit.
-
-If nothing survived Step 3 or Step 4 anywhere, say so directly. Don't manufacture a suggestion to justify having run.
+End with, when applicable:
+- A short callout naming any global-tool culprits from Step 4 as candidates for a separate follow-up.
+- A short list of project-level gotchas held for the debrief (out-of-scope docs).
 
 ## Step 6: Approve and apply
 
-Ask for approval before touching any file. Multiple repos can be approved individually or in one batch — the user's call. A "no" or "skip this one" leaves that repo's `AGENTS.md` untouched. Apply approved diffs with `Edit`.
+Ask for approval before touching any file. Changes can be approved individually or as a batch; the user's call. A "no" leaves that doc untouched. Apply approved diffs with `Edit`.
 
 ## What this skill is not
 
-- Not the personal preference/feedback memory system (`~/.claude/projects/.../memory`) — that's about how Claude collaborates with the user, is private, and isn't checked into git. This skill only proposes changes to a repo's own `AGENTS.md`: codebase/project facts any agent working there would need.
-- Not a mechanism for editing skills, MCP servers, or plugins — see Step 4.
-- Not a general session summary — findings that aren't `AGENTS.md`-shaped (a decision log, a list of artifacts produced) don't belong here.
+- Not the personal memory system (`~/.claude/projects/.../memory`). That covers how Claude collaborates with the user and is private. This skill only edits docs any agent working in the repo or project would read.
+- Not a mechanism for editing skills, MCP servers, or plugins (see Step 4).
+- Not a session summary or decision log.
