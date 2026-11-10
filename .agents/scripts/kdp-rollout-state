@@ -24,8 +24,18 @@ KREPO=${KREPO:-$HOME/r/k-repo}
 
 [[ -f $HOME/.aws/saml2aws_session ]] && source "$HOME/.aws/saml2aws_session"
 
-git -C "$INFRA" fetch -q origin master 2>/dev/null || { echo "infra fetch failed"; exit 3; }
-git -C "$KREPO" fetch -q origin main 2>/dev/null || { echo "k-repo fetch failed"; exit 3; }
+# A fetch can lose a ref-lock race with another fetch of the same clone, so retry
+# once, and say why it failed rather than looking like "not live yet".
+fetch() {
+	local err
+	err=$(git -C "$1" fetch -q origin "$2" 2>&1) && return 0
+	sleep 3
+	err=$(git -C "$1" fetch -q origin "$2" 2>&1) && return 0
+	echo "fetch of $2 in $1 failed: $(head -1 <<<"$err")"
+	return 1
+}
+fetch "$INFRA" master || exit 3
+fetch "$KREPO" main || exit 3
 
 # The image tag is a content hash, not a commit; the bump commit's subject is the
 # only link back to k-repo. Pods follow the newest bump, so it must contain the
@@ -41,13 +51,14 @@ spec=$(git -C "$INFRA" show "origin/master:$appfile")
 name=$(sed -nE 's/^  name: *//p' <<<"$spec" | head -1)
 ns=$(sed -nE 's/^  namespace: *//p' <<<"$spec" | head -1)
 # Default: every enabled target in $FLEET, as <name>-<target>-<replicaset>-<pod>.
+# A target with no `enabled:` line is enabled, as KDP treats it.
 targets=$(awk -v fleet="${FLEET:-dev}" '
 	/^targets:/ {t = 1; next}
 	t && /^[^ ]/ {t = 0}
 	t && /^  - name:/ {flush(); n = $3; f = ""; e = ""}
 	t && /^    fleet:/ {f = $2}
 	t && /^    enabled:/ {e = $2}
-	function flush() { if (n != "" && f == fleet && e == "true") print n }
+	function flush() { if (n != "" && f == fleet && e != "false") print n }
 	END {flush()}' <<<"$spec")
 pods=${4:-}
 if [[ -z $pods ]]; then
