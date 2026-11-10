@@ -9,11 +9,13 @@
 #                                 anything else: still waiting, poll again
 # A timeout counts as a failure. Exits with the check's final code (1 on
 # timeout). WATCH_OK_SOUND, WATCH_BAD_SOUND and WATCH_SECONDS override the
-# sounds and how long they loop (default 3 seconds). Then it speaks
-# "Message from <tmux session>, <window>." (inside tmux) in WATCH_HEADER_VOICE
-# (default Daniel), followed by the check's last output line in the system
-# voice, so that line should say what happened ("k-repo PR merged",
-# "Rollout complete"). WATCH_SAY=0 turns speech off.
+# sounds and how long they loop (default 3 seconds). Then it speaks, in one
+# voice, "Message from <tmux session>, <window>. Message: <last line>." (the
+# prefix only inside tmux), so the check's last output line should be a short
+# sentence saying what happened ("k-repo PR merged", "Rollout complete"). A
+# line that looks machine-shaped (URLs, timestamps, hashes, IDs, over 80
+# characters) is replaced with "Check succeeded" or "Check failed".
+# WATCH_SAY=0 turns speech off.
 set -uo pipefail
 
 poll=90 timeout=0
@@ -31,16 +33,35 @@ shift $((OPTIND - 1))
 ok_sound=${WATCH_OK_SOUND:-/System/Library/Sounds/Glass.aiff}
 bad_sound=${WATCH_BAD_SOUND:-/System/Library/Sounds/Basso.aiff}
 loop_seconds=${WATCH_SECONDS:-3}
-header_voice=${WATCH_HEADER_VOICE:-Daniel}
+
+# True when a line reads well aloud: short, and free of URLs, ISO timestamps,
+# long digit runs and mixed letter-digit tokens like pod hashes.
+speakable() {
+	local line=$1 words w
+	((${#line} <= 80)) || return 1
+	[[ $line =~ https?:// || $line =~ [0-9]{4}-[0-9]{2}-[0-9]{2}T || $line =~ [0-9]{6,} ]] && return 1
+	read -ra words <<<"$line"
+	for w in "${words[@]}"; do
+		[[ ${#w} -ge 7 && $w =~ [0-9] && $w =~ [A-Za-z] ]] && return 1
+	done
+	return 0
+}
 
 alarm() {
 	local end=$((SECONDS + loop_seconds))
 	while ((SECONDS < end)); do afplay "$1"; done
 	[[ ${WATCH_SAY:-1} == 0 ]] && return
-	local where=
+	local where= message
+	message=$(tail -n1 <<<"$output")
+	if ! speakable "$message"; then
+		[[ $1 == "$ok_sound" ]] && message="Check succeeded" || message="Check failed"
+	fi
 	[[ -n ${TMUX_PANE:-} ]] && where=$(tmux display-message -p -t "$TMUX_PANE" '#S, #W' 2>/dev/null)
-	[[ -n $where ]] && say -v "$header_voice" "Message from $where."
-	say "$(tail -n1 <<<"$output")."
+	if [[ -n $where ]]; then
+		say "Message from $where. Message: $message."
+	else
+		say "$message."
+	fi
 }
 
 started=$SECONDS
