@@ -39,6 +39,17 @@ Optionally create `~/shell/local.zsh` for machine-specific config (it's auto-sou
 source ~/.zshrc
 ```
 
+### 6. Install agent dependencies and launchd agents
+```bash
+(cd ~/.agents && npm ci)
+~/.local/bin/dotfiles-bootstrap-launchd
+```
+
+This renders the plist templates in `~/.config/launchd/` for this machine's home directory and loads them (`agents-publish` and the tmux-resurrect autosave). Safe to re-run; `/dotfiles-sync` also runs it every sync.
+
+### 7. Claude Code settings
+`~/.claude/settings.json` is not tracked. Merge the portable parts from `~/.claude/settings.portable.json` into it by hand; never copy the snapshot over wholesale.
+
 ## Shell Config Structure
 
 ```

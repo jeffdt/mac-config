@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Render the tracked launchd templates for this machine and (re)load them.
+#
+# launchd does not expand $HOME or ~ in plist paths, so the repo tracks
+# templates with a __HOME__ placeholder in ~/.config/launchd/ and this script
+# writes the real plists into ~/Library/LaunchAgents/ (untracked there).
+# Idempotent: an agent is only reloaded when its rendered plist changed or it
+# is not loaded yet. Pass --dry-run to only report what would change.
+
+set -euo pipefail
+
+TEMPLATE_DIR="$HOME/.config/launchd"
+AGENT_DIR="$HOME/Library/LaunchAgents"
+DOMAIN="gui/$(id -u)"
+DRY_RUN=0
+[ "${1:-}" = "--dry-run" ] && DRY_RUN=1
+
+mkdir -p "$AGENT_DIR"
+shopt -s nullglob
+rendered="$(mktemp)"
+trap 'rm -f "$rendered"' EXIT
+
+for template in "$TEMPLATE_DIR"/*.plist.template; do
+  name="$(basename "$template" .template)"
+  label="${name%.plist}"
+  target="$AGENT_DIR/$name"
+
+  sed "s#__HOME__#$HOME#g" "$template" > "$rendered"
+  plutil -lint -s "$rendered" || { echo "$label: invalid plist, skipping" >&2; continue; }
+
+  changed=1
+  [ -f "$target" ] && cmp -s "$rendered" "$target" && changed=0
+  loaded=0
+  launchctl print "$DOMAIN/$label" >/dev/null 2>&1 && loaded=1
+
+  if [ "$changed" -eq 0 ] && [ "$loaded" -eq 1 ]; then
+    echo "$label: up to date"
+    continue
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "$label: would $([ "$changed" -eq 1 ] && echo "write and ")load"
+    continue
+  fi
+
+  [ "$changed" -eq 1 ] && cp "$rendered" "$target"
+  [ "$loaded" -eq 1 ] && launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
+  launchctl bootstrap "$DOMAIN" "$target"
+  echo "$label: $([ "$changed" -eq 1 ] && echo "written and ")loaded"
+done

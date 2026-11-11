@@ -19,6 +19,16 @@ Steps:
    to just those two files, so `git status`/`diff`/`add` treat that specific drift as
    equivalent to the tracked `$HOME`-relative form and it never needs manual handling or
    shows up as noise.
+2b. After the pull (step 5), make sure this machine's agents and launchd jobs are set up
+   (both self-healing, cheap to run every time):
+   ```
+   [ -d "$HOME/.agents/node_modules" ] || (cd "$HOME/.agents" && npm ci)
+   "$HOME/.local/bin/dotfiles-bootstrap-launchd"
+   ```
+   launchd doesn't expand `$HOME` in plist paths, so the repo tracks templates in
+   `~/.config/launchd/*.plist.template` and the script renders them into
+   `~/Library/LaunchAgents/` (untracked) and loads any that changed or aren't loaded yet.
+   Never `config add` a plist under `Library/LaunchAgents/`; edit the template instead.
 3. `config -C "$HOME" status` to see local tracked changes. Only look at tracked files
    (`git diff --name-only HEAD`) — `git status -uall` will surface unrelated `$HOME` clutter
    (e.g. `.Trash`, app support files) since the work-tree is the whole home directory. Never

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Periodic tmux-resurrect save, driven by launchd instead of tmux's status-right
+# (tmux-continuum's trigger), which silently stops if status-right is overwritten.
+# Also warns via a macOS notification when snapshots go stale while a server is up.
+
+set -u
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+
+RESURRECT_DIR="$HOME/.local/share/tmux/resurrect"
+SAVE_SCRIPT="$HOME/.tmux/plugins/tmux-resurrect/scripts/save.sh"
+STALE_AFTER_SECONDS=3600
+
+log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
+
+tmux has-session 2>/dev/null || exit 0
+
+"$SAVE_SCRIPT" quiet
+status=$?
+[ "$status" -eq 0 ] || log "save.sh failed with exit code $status"
+
+# resurrect skips writing a new snapshot file when nothing changed, but always
+# rewrites the pane contents archive, so its mtime tracks the last successful save.
+age=$(( $(date +%s) - $(stat -f %m "$RESURRECT_DIR/pane_contents.tar.gz" 2>/dev/null || echo 0) ))
+if [ "$age" -gt "$STALE_AFTER_SECONDS" ]; then
+  log "last save completed ${age}s ago"
+  osascript -e 'display notification "tmux-resurrect snapshots are stale" with title "tmux autosave"' >/dev/null 2>&1
+fi

@@ -8,7 +8,7 @@ Edit files here, then run:
 agents-publish
 ```
 
-The publisher validates sources, writes target files atomically, and records generated files in `.publish-manifest.json` so stale generated files can be pruned safely. A user LaunchAgent (`~/Library/LaunchAgents/com.jeff.agents-publish.plist`) runs the publisher on login and whenever source directories change.
+The publisher validates sources, writes target files atomically, and records generated files in `.publish-manifest.json` so stale generated files can be pruned safely. A user LaunchAgent (`~/Library/LaunchAgents/com.jeff.agents-publish.plist`, rendered from `~/.config/launchd/com.jeff.agents-publish.plist.template` by `dotfiles-bootstrap-launchd`) runs the publisher on login and whenever source directories change.
 
 ## Canonical sources
 
