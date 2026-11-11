@@ -2,7 +2,6 @@
   "enabledPlugins": {
     "code-simplifier@claude-plugins-official": true,
     "codex@openai-codex": true,
-    "gateway@klaviyo-plugins": true,
     "github@claude-plugins-official": true,
     "kl-storytime@klaviyo-plugins": true,
     "pagerduty@claude-plugins-official": false,
