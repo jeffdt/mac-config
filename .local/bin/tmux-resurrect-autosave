@@ -6,6 +6,8 @@
 set -u
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+# launchd sets no locale; without UTF-8, tmux 3.7 rewrites the tab delimiters in -F output to "_".
+export LANG="${LANG:-en_US.UTF-8}"
 
 RESURRECT_DIR="$HOME/.local/share/tmux/resurrect"
 SAVE_SCRIPT="$HOME/.tmux/plugins/tmux-resurrect/scripts/save.sh"
@@ -18,6 +20,16 @@ tmux has-session 2>/dev/null || exit 0
 "$SAVE_SCRIPT" quiet
 status=$?
 [ "$status" -eq 0 ] || log "save.sh failed with exit code $status"
+
+# A snapshot with no pane lines makes continuum's restore kill the only session,
+# so tmux exits on launch. Point `last` at the newest snapshot that has panes instead.
+if ! grep -q $'^pane\t' "$RESURRECT_DIR/last" 2>/dev/null; then
+  bad=$(readlink "$RESURRECT_DIR/last")
+  good=$(grep -l $'^pane\t' $(ls -t "$RESURRECT_DIR"/tmux_resurrect_*.txt 2>/dev/null) /dev/null | head -1)
+  if [ -n "$good" ]; then ln -fs "$(basename "$good")" "$RESURRECT_DIR/last"; else rm -f "$RESURRECT_DIR/last"; fi
+  log "snapshot ${bad:-?} has no panes; last now -> ${good:-none}"
+  osascript -e 'display notification "tmux-resurrect saved a snapshot with no panes" with title "tmux autosave"' >/dev/null 2>&1
+fi
 
 # resurrect skips writing a new snapshot file when nothing changed, but always
 # rewrites the pane contents archive, so its mtime tracks the last successful save.
