@@ -20,7 +20,15 @@ cd "$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "run it inside a che
 repo=$(basename "$(git remote get-url origin 2>/dev/null)" .git)
 who="${repo:+$repo }PR"
 
-case $(gh pr view "$pr" --json state -q .state 2>/dev/null) in
+# A GITHUB_TOKEN exported for other tools can be stale and turns every gh call
+# into a 401; gh's own login is the one that works here.
+gh() { env -u GITHUB_TOKEN gh "$@"; }
+
+if ! state=$(gh pr view "$pr" --json state -q .state 2>&1); then
+	echo "gh pr view failed: ${state##*$'\n'}"
+	state=
+fi
+case $state in
 MERGED) echo "$who merged"; exit 0 ;;
 CLOSED) echo "$who closed without merging"; exit 1 ;;
 esac
@@ -29,6 +37,11 @@ esac
 if [[ -f .trunk/trunk.yaml ]] && command -v trunk >/dev/null; then
 	latest=$(trunk merge status "$pr" --no-progress 2>/dev/null |
 		sed $'s/\x1b\\[[0-9;]*m//g' | grep -E '^ *[0-9]{2}-[0-9]{2} ' | tail -1 | sed -E 's/ +/ /g')
+	if [[ $latest =~ Merged ]]; then
+		echo "merge queue:$latest"
+		echo "$who merged"
+		exit 0
+	fi
 	if [[ $latest =~ Failed|Cancelled ]]; then
 		echo "merge queue:$latest"
 		echo "$who failed the merge queue"
