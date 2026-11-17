@@ -2,9 +2,12 @@
 # This file sources common configs, then machine-specific local.zsh if it exists
 
 export PATH="$HOME/.local/bin:$PATH"
-export EDITOR="subl --wait"
+export EDITOR="zed --wait"
 
 SHELL_DIR="${0:a:h}"
+
+# Completions (tp and wt register theirs, so this must run before they init)
+(( $+functions[compdef] )) || { autoload -Uz compinit && compinit; }
 
 # Dotfiles management (bare git repo pattern)
 alias config='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
@@ -22,6 +25,11 @@ fi
 # tp (teleport), directory portals
 if command -v tp-core >/dev/null 2>&1; then
   eval "$(tp-core --init zsh)"
+fi
+
+# wt (worktrunk), worktree manager shell integration
+if command -v wt >/dev/null 2>&1; then
+  eval "$(command wt config shell init zsh)"
 fi
 
 # Machine-specific config (not tracked in git)
