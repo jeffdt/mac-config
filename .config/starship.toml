@@ -1,0 +1,67 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# Layout mirrors the Claude statusline: icon + segment, dim "·" between them
+format = "$directory$custom$git_branch$git_state$git_status$cmd_duration\n$character"
+
+palette = "tomorrow_night"
+
+[palettes.tomorrow_night]
+white = "#fbf1c7"
+green = "#b5bd68"
+cyan = "#8abeb7"
+dim = "#646464"
+red = "#cc6666"
+yellow = "#f0c674"
+
+[directory]
+format = "[$path]($style)[$read_only]($read_only_style)"
+style = "white"
+read_only_style = "red"
+truncation_length = 3
+truncate_to_repo = true
+
+# Starship has no worktree module. A linked worktree is the case where the git dir
+# differs from the common git dir; this shows the worktree's directory name.
+[custom.worktree]
+when = 'g=$(git rev-parse --path-format=absolute --git-dir --git-common-dir 2>/dev/null) && [ "$(printf "%s\n" "$g" | sed -n 1p)" != "$(printf "%s\n" "$g" | sed -n 2p)" ]'
+command = 'basename "$(git rev-parse --show-toplevel)"'
+format = " [·](dim) [ $output]($style)"
+style = "yellow"
+shell = ["sh"]
+
+[git_branch]
+format = " [·](dim) [⌥ $branch]($style)"
+style = "green"
+truncation_length = 20
+truncation_symbol = "..."
+
+# Rebase, merge, cherry-pick and so on, while one is in progress
+[git_state]
+format = " [·](dim) [$state( $progress_current/$progress_total)]($style)"
+style = "red"
+
+# Hidden when clean. + staged, ! modified, ? untracked, ✘ deleted, » renamed,
+# = conflicted, $ stashed, ⇡ ahead, ⇣ behind, ⇕ diverged
+[git_status]
+format = "([ \\[$all_status$ahead_behind\\]]($style))"
+style = "yellow"
+conflicted = "=${count}"
+staged = "+${count}"
+modified = "!${count}"
+untracked = "?${count}"
+deleted = "✘${count}"
+renamed = "»${count}"
+stashed = "$${count}"
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕⇡${ahead_count}⇣${behind_count}"
+
+# Only surface genuinely long commands; the 2s default is noisy
+[cmd_duration]
+min_time = 10_000
+format = " [·](dim) [$duration]($style)"
+style = "cyan"
+
+[character]
+success_symbol = "[\\$](green)"
+error_symbol = "[\\$](red)"
