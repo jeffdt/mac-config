@@ -266,5 +266,9 @@
     ],
     "ask": [],
     "deny": []
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.py"
   }
 }
