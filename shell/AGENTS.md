@@ -1,13 +1,11 @@
-# CLAUDE.md
+# Shell config
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Personal zsh configuration with a portable tier and a machine-specific tier.
 
-## What This Is
+- `common.zsh` is the entry point, sourced from `~/.zshrc`. It and `common/` are portable and tracked.
+- `local/` holds machine-specific files (work aliases, credentials, tool setup). It is gitignored and never backed up.
 
-Personal zsh shell configuration using a two-tier architecture:
-
-- **`common.zsh`** — Entry point. Sources all `common/` modules, initializes starship prompt, then conditionally sources `local.zsh` for machine-specific config. This file and `common/` are portable and tracked in git via a bare repo at `~/.dotfiles/`.
-- **`local.zsh`** — Machine-specific entry point (work laptop). Sources all `local/` modules. **Not tracked in git.**
+`~/.zshrc` itself is untracked and should contain only `source ~/shell/common.zsh`.
 
 **IMPORTANT: This is NOT a normal git repo.** Dotfiles are managed with a bare repo at `~/.dotfiles/`. The `config` alias replaces `git` for all operations:
 
@@ -18,33 +16,23 @@ config commit -m "..." # not: git commit -m "..."
 config push            # not: git push
 ```
 
-Running bare `git` commands in this directory will fail with "not a git repository". Always use `config`. The work tree root is `$HOME`, so file paths in `config add` are relative to `~` (run `config add` from `~`, or use paths like `shell/common/functions.zsh`).
+Bare `git` in this directory fails with "not a git repository". The work tree root is `$HOME`, so run `config add` from `~` or use paths like `shell/common/functions.zsh`.
 
-## Architecture
+## Load order
 
-```
-common.zsh            ← entry point, sourced by ~/.zshrc
-├── common/
-│   ├── aliases.zsh   ← Claude Code quick-question aliases (claude1/2/3), cd shortcuts
-│   ├── functions.zsh ← wtc (worktree create shortcut), b64 helper, pbcopy wrapper with sound
-│   ├── fzf.zsh      ← fzf initialization
-│   ├── git.zsh      ← git aliases (ga, gs, gd, gp, gm, etc.) and functions (gcp, gpa, gpr, gpx)
-│   ├── tp.zsh       ← tp (custom portal/teleport app using warp-core): frecency-ranked directory jumping, zsh completion
-│   └── utils.zsh    ← general aliases (act, la, src, brewup), b64, kdo
-local.zsh             ← machine-specific, NOT in git
-├── local/
-│   ├── envvars.zsh   ← tokens and credentials (NEVER commit)
-│   ├── klaviyo.zsh   ← work aliases (cda, cdf, etc.), AWS/S2A auth, branch helper
-│   ├── fender.zsh    ← ~/r/fender: fender dev alias
-│   ├── fnm.zsh      ← Node version manager setup
-│   ├── jarvis.zsh   ← ~/r/k-ops-jarvis: k8s pod access, 1Password secret retrieval
-│   ├── krepo.zsh    ← ~/r/k-repo: dev helpers, krepo:kill-servers (ports 8091-8100)
-│   └── prod.zsh     ← prod/infra access: od:* (on-demand servers), kdp:* (KDP pod connect + debug)
-```
+`common.zsh` runs in this order:
 
-## Key Conventions
+1. `compinit`, skipped if completions are already initialized. Tools that register completions (`tp`, `wt`) must come after it.
+2. Everything in `common/*.zsh`, alphabetically.
+3. Tool inits that need to run late: `starship`, `tp-core`, `wt`.
+4. Machine-specific config. If `~/shell/local.zsh` exists it is sourced and is then responsible for loading `local/`. If not, `local/*.zsh` are sourced alphabetically.
 
-- **`common/`** = portable across machines; **`local/`** = machine-specific, gitignored.
-- `local/envvars.zsh` contains real API tokens. Never read, display, or commit its contents.
-- Functions use zsh syntax (`${0:a:h}` for script dir, `[[ ]]` tests).
-- The `pbcopy` wrapper in `functions.zsh` overrides the system command to add an audio cue.
+Files in a directory load alphabetically, so a file that depends on another must sort after it (a numeric prefix like `10-envvars.zsh` works). Local files load last and can override anything in `common/`.
+
+## Conventions
+
+- `common/` must work on any machine. Guard every optional tool with `command -v`, so a missing tool is skipped, not an error.
+- Anything specific to one job or machine goes in `local/`.
+- `local/envvars.zsh`, if present, holds real tokens. Never read, display, or commit it.
+- Use zsh syntax (`${0:a:h}` for the script dir, `[[ ]]` tests).
+- Do not add per-file inventories to this doc. List the directories to see what exists.

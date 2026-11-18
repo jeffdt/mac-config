@@ -32,7 +32,7 @@ Add this line to your `~/.zshrc`:
 source ~/shell/common.zsh
 ```
 
-Optionally create `~/shell/local.zsh` for machine-specific config (it's auto-sourced if it exists).
+Put machine-specific config in `~/shell/local/*.zsh` (auto-sourced alphabetically, not tracked). A `~/shell/local.zsh` is optional; if it exists it is sourced instead and must load `local/` itself.
 
 ### 5. Reload your shell
 ```bash
@@ -56,16 +56,12 @@ This renders the plist templates in `~/.config/launchd/` for this machine's home
 ~/shell/
 ├── common.zsh          # Entry point (tracked)
 ├── common/             # Portable configs (tracked)
-│   ├── aliases.zsh     # Git, brew, venv, editor aliases
-│   ├── functions.zsh   # b64, kdo, git helpers
-│   └── fzf.zsh         # fzf setup
-├── local.zsh           # Machine-specific entry (NOT tracked)
 └── local/              # Machine-specific files (NOT tracked)
 ```
 
 - **common.zsh** and **common/** are tracked and portable across machines
-- **local.zsh** and **local/** are NOT tracked - create them for machine-specific config
-- `common.zsh` auto-sources `local.zsh` if it exists
+- **local/** is NOT tracked; create it for machine-specific config
+- `common.zsh` sources `local/*.zsh` alphabetically, unless a `local.zsh` exists, which then takes over
 
 ## Daily Usage
 

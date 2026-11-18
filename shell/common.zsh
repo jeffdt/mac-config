@@ -32,5 +32,12 @@ if command -v wt >/dev/null 2>&1; then
   eval "$(command wt config shell init zsh)"
 fi
 
-# Machine-specific config (not tracked in git)
-[[ -f "$SHELL_DIR/local.zsh" ]] && source "$SHELL_DIR/local.zsh"
+# Machine-specific config (not tracked in git). A local.zsh takes over entirely
+# (it is responsible for sourcing local/); otherwise local/*.zsh load alphabetically.
+if [[ -f "$SHELL_DIR/local.zsh" ]]; then
+  source "$SHELL_DIR/local.zsh"
+else
+  for f in "$SHELL_DIR"/local/*.zsh(N); do
+    source "$f"
+  done
+fi
